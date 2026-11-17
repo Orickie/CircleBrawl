@@ -159,9 +159,9 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 const ARENA = 600, DT = 1 / 120, SUDDEN_AT = 45, RADIUS = 56, MAX_TRAITS = 3, MAX_LEVEL = 3;
 const SWORD_LEN = 96, CLEAVE_ZONE = 120, ROPE_SPEED = 1100;
 const SHIELD_CD = [0, 10, 8, 6], CLEAVE_CD = [0, 7, 6, 5], CLEAVE_MULT = 1.2;
-const SHOOT_EVERY = [5, 4, 3.2, 2.5], HIT_CHANCE = 0.7, KICK_CD = [0, 5, 4, 3], KICK_MULT = [0, 0.6, 0.8, 1], STUN_EVERY = [0, 3, 2, 1], STUN_SECS = 1.5, DOUBLE = [0, 0.2, 0.35, 0.5];
+const SHOOT_EVERY = [5, 4, 3.2, 2.5], ARROW_SPEED = 900, ARROW_SPREAD = 0.3, KICK_CD = [0, 5, 4, 3], KICK_MULT = [0, 0.6, 0.8, 1], STUN_EVERY = [0, 3, 2, 1], STUN_SECS = 1.5, DOUBLE = [0, 0.2, 0.35, 0.5];
 const POISON = [0, 3, 5, 7], POISON_SECS = 4, GRAB_CD = [0, 5, 4, 3], STING_MULT = [0, 0.6, 0.9, 1.2], VOLLEY_CD = [0, 6, 5, 4], VOLLEY_MULT = 0.4;
-const LATCH_SECS = 2, LATCH_CD = 2.5, LATCH_GUARD = 0.5, LEECH = [0.3, 0.5, 0.7, 0.9], SPIKE_PRICK = 0.4, BAT_CD = [0, 9, 7.5, 6], BAT_SECS = 0.9, BAT_MULT = 0.8;
+const LATCH_SECS = 2, LATCH_CD = 4.5, LEECH = [0.3, 0.5, 0.7, 0.9], SPIKE_PRICK = 0.15, BAT_CD = [0, 9, 7.5, 6], BAT_SECS = 0.9, BAT_MULT = 0.8;
 const SERV_CD = [0, 8, 6.5, 5], SERV_MULT = 0.6, SERV_R = 14, POOL_CD = [0, 12, 10, 8], POOL_HEAL = [0, 10, 15, 20], POOL_SECS = 2, FRENZY = [0, 0.08, 0.12, 0.16];
 
 function mulberry32(a) {
@@ -181,8 +181,8 @@ const CLASSES = {
     traits: ['swords', 'spin', 'shield', 'reach', 'cleave'],
   },
   archer: {
-    name: 'Archer', ability: 'Shoots an arrow at the rival every 5 seconds with a 70% chance to hit. Medium to high damage.',
-    base: { hp: 100, dmg: 32, def: 5, spd: 44 }, up: { hp: 15, dmg: 5, def: 5, spd: 3 },
+    name: 'Archer', ability: 'Shoots an arrow in a straight line every 5 seconds, aimed at where the rival is heading. Medium to high damage.',
+    base: { hp: 100, dmg: 33, def: 5, spd: 44 }, up: { hp: 15, dmg: 5, def: 5, spd: 3 },
     traits: ['rapid', 'stun', 'kick', 'double', 'control'],
   },
   spike: {
@@ -191,8 +191,8 @@ const CLASSES = {
     traits: ['poison', 'grab', 'stings', 'bulk', 'volley'],
   },
   vampire: {
-    name: 'Vampire', ability: 'Latches onto the rival on contact and bites 3 times over 2 seconds, healing for 30% of the damage dealt.',
-    base: { hp: 95, dmg: 9, def: 10, spd: 40 }, up: { hp: 15, dmg: 2, def: 5, spd: 3 },
+    name: 'Vampire', ability: 'Latches onto the rival on contact and bites 3 times over 2 seconds, healing for 30% of the damage dealt. A bitten Knight cannot swing its swords.',
+    base: { hp: 92, dmg: 10, def: 10, spd: 45 }, up: { hp: 15, dmg: 2, def: 5, spd: 3 },
     traits: ['thirst', 'bat', 'servants', 'pool', 'frenzy'],
   },
 };
@@ -208,7 +208,7 @@ const FX = {
   cleave:  { name: 'Great Cleave', desc: s => `When the rival enters your hit zone, a huge sword sweeps through it for ${Math.round(CLEAVE_MULT * 100)}% damage and flings the rival along the swing. ${CLEAVE_CD[s]} second cooldown.` },
   // Archer
   rapid:   { name: 'Rapid Fire',   desc: s => `Shoot every ${SHOOT_EVERY[s]} seconds instead of 5.` },
-  stun:    { name: 'Stun Arrow',   desc: s => `${['', 'Every 3rd arrow', 'Every 2nd arrow', 'Every arrow'][s]} is a glowing stun arrow. It never misses and stuns the rival for ${STUN_SECS} seconds.` },
+  stun:    { name: 'Stun Arrow',   desc: s => `${['', 'Every 3rd arrow', 'Every 2nd arrow', 'Every arrow'][s]} is a glowing stun arrow. It tracks the rival, so it never misses, and stuns for ${STUN_SECS} seconds.` },
   kick:    { name: 'Kick',         desc: s => `When the rival gets close, kick it away for ${Math.round(KICK_MULT[s] * 100)}% damage. ${KICK_CD[s]} second cooldown.` },
   double:  { name: 'Double Shot',  desc: s => `Each shot has a ${Math.round(DOUBLE[s] * 100)}% chance to fire a second arrow.` },
   control: { name: 'Free Rein',    desc: s => `Steer your circle with WASD or the arrow keys, or by holding on the arena.${s > 1 ? ` +${15 * (s - 1)}% speed.` : ''}`, playerOnly: true },
@@ -275,8 +275,7 @@ function hurt(f, tgt, raw, kind) {
     f.events.push({ type: 'text', x: tgt.x, y: tgt.y, text: 'BLOCK' });
     return 0;
   }
-  // A latched Vampire is pressed against the rival, inside its reach, so it takes reduced damage while biting.
-  const amount = kind === 'true' ? raw : raw * (1 - Math.min(75, tgt.def) / 100) * (tgt.latchT > 0 && kind !== 'bite' && kind !== 'arrow' ? LATCH_GUARD : 1);
+  const amount = kind === 'true' ? raw : raw * (1 - Math.min(75, tgt.def) / 100);
   tgt.hp -= amount; tgt.flash = 0.12;
   f.events.push({ type: 'dmg', x: tgt.x, y: tgt.y, amount, kind, side: tgt.side });
   return amount;
@@ -301,24 +300,28 @@ function segDist(px, py, x1, y1, x2, y2) {
   return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
 }
 
+// Arrows fly in a straight line. The Archer aims at where the rival will be when the arrow arrives,
+// with a small random spread, so a rival that speeds up, turns or bounces can still get out of the way.
+// A stun arrow is the exception: it tracks the rival all the way.
 function fireArrow(f, c, o) {
   c.shots++;
   const stun = !f.demo && c.s('stun') > 0 && c.shots % STUN_EVERY[c.s('stun')] === 0;
-  const dist = Math.hypot(o.x - c.x, o.y - c.y), hit = f.demo || stun ? true : f.rng() < HIT_CHANCE;
-  let ang = c.aim;
-  // A missed shot is aimed wide enough to clear the rival.
-  if (!hit) ang += (f.rng() < 0.5 ? -1 : 1) * (Math.asin(Math.min(1, (o.r + 30) / Math.max(dist, o.r + 31))) + 0.12);
-  f.arrows.push({ x: c.x + Math.cos(ang) * c.r, y: c.y + Math.sin(ang) * c.r, ang, hit, stun, side: c.side });
+  const dist = Math.hypot(o.x - c.x, o.y - c.y), t = o.frozen > 0 || o.poolT > 0 ? 0 : dist / ARROW_SPEED;
+  const tx = Math.max(o.r, Math.min(ARENA - o.r, o.x + o.vx * t)), ty = Math.max(o.r, Math.min(ARENA - o.r, o.y + o.vy * t));
+  const ang = stun ? c.aim : Math.atan2(ty - c.y, tx - c.x) + (f.rng() * 2 - 1) * ARROW_SPREAD;
+  f.arrows.push({ x: c.x + Math.cos(ang) * c.r, y: c.y + Math.sin(ang) * c.r, ang, homing: stun, stun, side: c.side });
 }
 function abilities(f, c, o) {
   const dist = Math.hypot(o.x - c.x, o.y - c.y);
   c.aim = Math.atan2(o.y - c.y, o.x - c.x);
   if (c.cls === 'knight') {
-    c.swordAng += swordSpin(c) * DT;
+    // A Knight with a Vampire latched onto it cannot swing: the swords stop until the Vampire lets go.
+    const bitten = o.latchT > 0;
+    if (!bitten) c.swordAng += swordSpin(c) * DT;
     const n = swordCount(c), len = swordLen(c), w = swordWidth(c);
     for (let i = 0; i < n; i++) {
       c.swordCd[i] -= DT;
-      if (c.swordCd[i] > 0) continue;
+      if (c.swordCd[i] > 0 || bitten) continue;
       const a = c.swordAng + i * Math.PI * 2 / n, ca = Math.cos(a), sa = Math.sin(a);
       if (segDist(o.x, o.y, c.x + ca * c.r, c.y + sa * c.r, c.x + ca * (c.r + len), c.y + sa * (c.r + len)) < o.r + w / 2) {
         c.swordCd[i] = 0.45;
@@ -462,17 +465,16 @@ function stepFight(f) {
   }
   f.poolPress = false;
   const out = p => p.x < 0 || p.x > ARENA || p.y < 0 || p.y > ARENA;
-  // Arrows: a shot that rolled a hit tracks the rival; a miss flies straight into the wall.
   for (const ar of f.arrows) {
     const tgt = ar.side === 0 ? b : a, own = ar.side === 0 ? a : b;
-    if (ar.hit) ar.ang = Math.atan2(tgt.y - ar.y, tgt.x - ar.x);
-    ar.x += Math.cos(ar.ang) * 900 * DT; ar.y += Math.sin(ar.ang) * 900 * DT;
-    if (ar.hit && Math.hypot(tgt.x - ar.x, tgt.y - ar.y) < tgt.r) {
-      ar.done = true;
+    if (ar.homing) ar.ang = Math.atan2(tgt.y - ar.y, tgt.x - ar.x);
+    ar.x += Math.cos(ar.ang) * ARROW_SPEED * DT; ar.y += Math.sin(ar.ang) * ARROW_SPEED * DT;
+    if (tgt.poolT <= 0 && Math.hypot(tgt.x - ar.x, tgt.y - ar.y) < tgt.r) {
+      ar.done = true; f.arrowHits = (f.arrowHits || 0) + 1;
       const dealt = attack(f, own, tgt, 1, 'arrow');
       if (dealt > 0 && ar.stun) { tgt.frozen = Math.max(tgt.frozen, STUN_SECS); f.events.push({ type: 'text', x: tgt.x, y: tgt.y, text: 'STUN' }); }
     } else if (out(ar)) {
-      ar.done = true;
+      ar.done = true; f.arrowMisses = (f.arrowMisses || 0) + 1;
       if (!f.demo) f.events.push({ type: 'text', x: Math.max(50, Math.min(ARENA - 50, ar.x)), y: Math.max(70, Math.min(ARENA - 20, ar.y)), text: 'MISS', dim: true });
     }
   }
@@ -611,9 +613,9 @@ function showOverlay(html, cls) { overlay.className = 'overlay' + (cls ? ' ' + c
 const ZH = {
   classes: {
     knight:  { name: '骑士',   ability: '一把剑绕着骑士旋转，碰到对手就造成伤害。单次伤害为低到中等。' },
-    archer:  { name: '弓箭手', ability: '每 5 秒向对手射出一支箭，命中率 70%。伤害为中到高。' },
+    archer:  { name: '弓箭手', ability: '每 5 秒沿直线射出一支箭，瞄准对手前进的方向。伤害为中到高。' },
     spike:   { name: '尖刺',   ability: '全身长满尖刺，每次与对手碰撞都会造成伤害。' },
-    vampire: { name: '吸血鬼', ability: '碰到对手后咬住不放，在 2 秒内撕咬 3 次，并按造成伤害的 30% 回复生命。' },
+    vampire: { name: '吸血鬼', ability: '碰到对手后咬住不放，在 2 秒内撕咬 3 次，并按造成伤害的 30% 回复生命。被咬住的骑士无法挥剑。' },
   },
   fx: {
     swords:   { name: '双剑',     desc: s => `携带 ${s + 1} 把剑。` },
@@ -622,7 +624,7 @@ const ZH = {
     reach:    { name: '巨剑',     desc: s => `剑变大 ${30 * s}%。` },
     cleave:   { name: '回旋斩',   desc: s => `对手进入攻击范围时，挥出一把巨剑横扫该范围，造成 ${Math.round(CLEAVE_MULT * 100)}% 伤害，并把对手沿挥砍方向击飞。冷却 ${CLEAVE_CD[s]} 秒。` },
     rapid:    { name: '速射',     desc: s => `每 ${SHOOT_EVERY[s]} 秒射一箭，原为 5 秒。` },
-    stun:     { name: '眩晕箭',   desc: s => `${['', '每第 3 支箭', '每第 2 支箭', '每一支箭'][s]}都是发光的眩晕箭：必定命中，并使对手眩晕 ${STUN_SECS} 秒。` },
+    stun:     { name: '眩晕箭',   desc: s => `${['', '每第 3 支箭', '每第 2 支箭', '每一支箭'][s]}都是发光的眩晕箭：会追踪对手，必定命中，并使对手眩晕 ${STUN_SECS} 秒。` },
     kick:     { name: '踢击',     desc: s => `对手靠近时将其踢飞，造成 ${Math.round(KICK_MULT[s] * 100)}% 伤害。冷却 ${KICK_CD[s]} 秒。` },
     double:   { name: '连射',     desc: s => `每次射击有 ${Math.round(DOUBLE[s] * 100)}% 的几率再射出一支箭。` },
     control:  { name: '自由操控', desc: s => `用 WASD 或方向键操控你的圆球，也可以按住场地来引导方向。${s > 1 ? `速度 +${15 * (s - 1)}%。` : ''}` },
@@ -694,7 +696,7 @@ const UI = {
     pool: '血池', poolActive: '血池：生效中', poolCd: n => `血池：${n} 秒`, poolReady: '血池：就绪', sudden: '决胜阶段',
   },
 };
-function loadLang() { try { const v = localStorage.getItem('circleBrawlLang'); if (v === 'en' || v === 'zh') return v; } catch (e) {} return (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en'; }
+function loadLang() { try { const v = localStorage.getItem('circleBrawlLang'); if (v === 'en' || v === 'zh') return v; } catch (e) {} return 'en'; }
 let LANG = loadLang();
 const zh = () => LANG === 'zh';
 function t(key, ...args) { const v = UI[LANG][key]; return typeof v === 'function' ? v(...args) : v; }
