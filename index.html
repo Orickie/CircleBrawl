@@ -20,13 +20,17 @@
   --rival: #36d6c3;
   --gold: #ffd23f;
   --display: "Bungee", "Arial Black", Impact, sans-serif;
-  --body: "Chakra Petch", "Trebuchet MS", system-ui, sans-serif;
+  --body: "Chakra Petch", "Trebuchet MS", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
 }
+/* Chinese: the display face has no Chinese glyphs, so headings use a heavy system face instead. */
+html[lang="zh-CN"] { --display: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", "Heiti SC", sans-serif; }
+html[lang="zh-CN"] :is(h1, .logo, .big, .card .name, .overlay h2, .overlay h4, .build h3, .vs, .meta b) { font-weight: 900; }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
 body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.4; padding: 16px; }
 .cabinet { max-width: 580px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 h1 { font-family: var(--display); font-weight: 400; font-size: 28px; margin: 0; letter-spacing: 0.02em; line-height: 1; }
 h1 span, .logo span { color: var(--you); }
 .meta { display: flex; gap: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -106,8 +110,11 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 <body>
 <main class="cabinet">
   <header>
-    <h1>Circle <span>Brawl</span></h1>
-    <div class="meta"><span>Stage <b id="stage">1</b></span><span>Coins <b id="coins">0</b></span><span>Best <b id="best">0</b></span></div>
+    <h1 id="brand">Circle <span>Brawl</span></h1>
+    <div class="top">
+      <div class="meta"><span><span data-t="stage">Stage</span> <b id="stage">1</b></span><span><span data-t="coins">Coins</span> <b id="coins">0</b></span><span><span data-t="best">Best</span> <b id="best">0</b></span></div>
+      <button class="chip" id="lang" aria-label="Switch language">中文</button>
+    </div>
   </header>
 
   <div class="bars">
@@ -131,19 +138,19 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 
   <div class="controls">
     <div class="speed">
-      <span>Fight speed</span>
+      <span data-t="speed">Fight speed</span>
       <button class="chip" data-speed="1" aria-pressed="true">1×</button>
       <button class="chip" data-speed="2" aria-pressed="false">2×</button>
       <button class="chip" data-speed="4" aria-pressed="false">4×</button>
     </div>
-    <button class="chip" id="restart">New run</button>
+    <button class="chip" id="restart" data-t="newRun">New run</button>
   </div>
 
   <div class="builds">
-    <section class="build you"><h3>Your circle <span id="slots"></span></h3><div id="buildYou"></div></section>
-    <section class="build rival"><h3>Rival circle</h3><div id="buildRival"></div></section>
+    <section class="build you"><h3><span data-t="yourCircle">Your circle</span> <span id="slots"></span></h3><div id="buildYou"></div></section>
+    <section class="build rival"><h3 data-t="rivalCircle">Rival circle</h3><div id="buildRival"></div></section>
   </div>
-  <p class="rules">Circles bounce freely and bumping into each other does no damage. Only a class ability hurts: the Knight's swords, the Archer's arrows, the Spike's spikes or the Vampire's bite. Defense is the share of each hit that is blocked. A circle holds up to 3 of its class's traits, each with 3 levels. Tap a tool during a fight to use it. Every win pays 10 coins. After 45 seconds sudden death begins. Lose once and the run ends.</p>
+  <p class="rules" data-t="rules">Circles bounce freely and bumping into each other does no damage. Only a class ability hurts: the Knight's swords, the Archer's arrows, the Spike's spikes or the Vampire's bite. Defense is the share of each hit that is blocked. A circle holds up to 3 of its class's traits, each with 3 levels. Tap a tool during a fight to use it. Every win pays 10 coins. After 45 seconds sudden death begins. Lose once and the run ends.</p>
 </main>
 
 <script>
@@ -599,23 +606,146 @@ function previewFight() { fight = createFight(me(), G.node.rival, 1); fight.over
 
 const overlay = $('overlay');
 function showOverlay(html, cls) { overlay.className = 'overlay' + (cls ? ' ' + cls : ''); overlay.innerHTML = `<div class="inner">${html}</div>`; overlay.hidden = false; overlay.scrollTop = 0; }
-function traitNames(build) { const ids = Object.keys(build); return ids.length ? ids.map(id => FX[id].name + (build[id] > 1 ? ' ×' + build[id] : '')).join(', ') : 'no traits'; }
-function statLine(st) { return `<div class="stats"><span>HP <b>${Math.round(st.hp)}</b></span><span>Damage <b>${Math.round(st.dmg)}</b></span><span>Defense <b>${st.def}%</b></span><span>Speed <b>${st.spd}</b></span></div>`; }
+// ---------- Language ----------
+// English text lives with the game data above. This table holds the Chinese for the same ids, plus all interface text in both languages.
+const ZH = {
+  classes: {
+    knight:  { name: '骑士',   ability: '一把剑绕着骑士旋转，碰到对手就造成伤害。单次伤害为低到中等。' },
+    archer:  { name: '弓箭手', ability: '每 5 秒向对手射出一支箭，命中率 70%。伤害为中到高。' },
+    spike:   { name: '尖刺',   ability: '全身长满尖刺，每次与对手碰撞都会造成伤害。' },
+    vampire: { name: '吸血鬼', ability: '碰到对手后咬住不放，在 2 秒内撕咬 3 次，并按造成伤害的 30% 回复生命。' },
+  },
+  fx: {
+    swords:   { name: '双剑',     desc: s => `携带 ${s + 1} 把剑。` },
+    spin:     { name: '疾风剑刃', desc: s => `剑的旋转速度提高 ${40 * s}%。` },
+    shield:   { name: '护盾',     desc: s => `每 ${SHIELD_CD[s]} 秒抵挡一次伤害。` },
+    reach:    { name: '巨剑',     desc: s => `剑变大 ${30 * s}%。` },
+    cleave:   { name: '回旋斩',   desc: s => `对手进入攻击范围时，挥出一把巨剑横扫该范围，造成 ${Math.round(CLEAVE_MULT * 100)}% 伤害，并把对手沿挥砍方向击飞。冷却 ${CLEAVE_CD[s]} 秒。` },
+    rapid:    { name: '速射',     desc: s => `每 ${SHOOT_EVERY[s]} 秒射一箭，原为 5 秒。` },
+    stun:     { name: '眩晕箭',   desc: s => `${['', '每第 3 支箭', '每第 2 支箭', '每一支箭'][s]}都是发光的眩晕箭：必定命中，并使对手眩晕 ${STUN_SECS} 秒。` },
+    kick:     { name: '踢击',     desc: s => `对手靠近时将其踢飞，造成 ${Math.round(KICK_MULT[s] * 100)}% 伤害。冷却 ${KICK_CD[s]} 秒。` },
+    double:   { name: '连射',     desc: s => `每次射击有 ${Math.round(DOUBLE[s] * 100)}% 的几率再射出一支箭。` },
+    control:  { name: '自由操控', desc: s => `用 WASD 或方向键操控你的圆球，也可以按住场地来引导方向。${s > 1 ? `速度 +${15 * (s - 1)}%。` : ''}` },
+    poison:   { name: '毒刺',     desc: s => `碰撞会让对手中毒，在 ${POISON_SECS} 秒内每秒受到 ${POISON[s]} 点伤害。毒伤不受你的伤害属性和对手防御的影响。` },
+    grab:     { name: '钩索',     desc: s => `每 ${GRAB_CD[s]} 秒向对手射出一条绳索，命中后会把对手拉向你。` },
+    stings:   { name: '墙刺',     desc: s => `撞墙时会在墙上留下一根刺。对手碰到后受到 ${Math.round(STING_MULT[s] * 100)}% 伤害，这根刺随即消失。` },
+    bulk:     { name: '壮硕',     desc: s => `体型变大 ${12 * s}%，生命上限 +${20 * s}。` },
+    volley:   { name: '荆棘齐射', desc: s => `每 ${VOLLEY_CD[s]} 秒向四面八方射出 8 根荆棘，每根造成 ${Math.round(VOLLEY_MULT * 100)}% 伤害。` },
+    thirst:   { name: '嗜血',     desc: s => `按造成伤害的 ${Math.round(LEECH[s] * 100)}% 回复生命，原为 30%。` },
+    bat:      { name: '蝙蝠形态', desc: s => `每 ${BAT_CD[s]} 秒变成蝙蝠冲向对手。冲刺期间不受伤害，穿过对手时造成 ${Math.round(BAT_MULT * 100)}% 伤害并回复生命。` },
+    servants: { name: '血仆',     desc: s => `每 ${SERV_CD[s]} 秒召唤 2 个追击对手的小圆球。每个造成 ${Math.round(SERV_MULT * 100)}% 伤害并为你回复生命，碰到对手后消失。` },
+    pool:     { name: '血池',     desc: s => `按“血池”按钮或空格键，化作一滩血，持续 ${POOL_SECS} 秒。期间不受伤害，并回复 ${POOL_HEAL[s]} 点生命。冷却 ${POOL_CD[s]} 秒。` },
+    frenzy:   { name: '血之狂热', desc: s => `每次撕咬命中，本场战斗的伤害 +${Math.round(FRENZY[s] * 100)}%，最多叠加 5 次。` },
+  },
+  tools: {
+    medkit:  { name: '急救包', desc: '回复 30 点生命。' },
+    bomb:    { name: '炸弹',   desc: '立即对对手造成 20 点伤害，无视防御。' },
+    rage:    { name: '狂怒',   desc: '5 秒内伤害 +50%。' },
+    freeze:  { name: '冰冻',   desc: '对手在 2.5 秒内无法移动和攻击。' },
+    barrier: { name: '屏障',   desc: '2.5 秒内不受任何伤害。' },
+  },
+  routes: {
+    trait:  { name: '切磋',   reward: () => '获胜：选择 1 个特性' },
+    stat:   { name: '训练',   reward: () => '获胜：从 2 项随机属性中提升 1 项' },
+    bounty: { name: '悬赏',   reward: f => `获胜：${bountyCoins(f)} 金币` },
+    tool:   { name: '军械库', reward: () => '获胜：选择 1 件道具' },
+    shop:   { name: '商店',   reward: () => '没有战斗。用金币购买特性和道具。' },
+  },
+  stats: { hp: '生命上限', dmg: '伤害', def: '防御', spd: '速度' },
+  floats: { 'BLOCK': '格挡', 'CLEAVE': '回旋斩', 'KICK': '踢击', 'STUN': '眩晕', 'GRAB': '钩住', 'MISS': '未命中', 'BAT FORM': '蝙蝠形态', 'BLOOD POOL': '血池', 'RAGE': '狂怒', 'FROZEN': '冰冻', 'BARRIER': '屏障' },
+};
+const UI = {
+  en: {
+    brand: 'Circle <span>Brawl</span>', logo: 'Circle<br><span>Brawl</span>', langBtn: '中文', arena: 'Arena where the two circles fight',
+    stage: 'Stage', coins: 'Coins', best: 'Best', speed: 'Fight speed', newRun: 'New run', yourCircle: 'Your circle', rivalCircle: 'Rival circle',
+    rules: "Circles bounce freely and bumping into each other does no damage. Only a class ability hurts: the Knight's swords, the Archer's arrows, the Spike's spikes or the Vampire's bite. Defense is the share of each hit that is blocked. A circle holds up to 3 of its class's traits, each with 3 levels. Tap a tool during a fight to use it. Every win pays 10 coins. After 45 seconds sudden death begins. Lose once and the run ends.",
+    you: 'You', rival: 'Rival', tag: (who, cls) => `${who} · ${cls}`, hp: 'HP', damage: 'Damage', defense: 'Defense', speedStat: 'Speed',
+    tools: 'Tools', noTools: 'None. Win an Armory fight or visit a Shop.', slots: (n, m) => `${n}/${m} traits`,
+    noTraitsYet: 'No traits yet.', noTraits: 'No traits.', pressPlay: 'Press Play and choose a Knight, an Archer, a Spike or a Vampire.',
+    pickRouteHint: 'Pick a route to meet your next rival.', rivalsAre: 'Rivals are Knights, Archers, Spikes or Vampires with random traits.',
+    withTraits: list => `with ${list}`, withNone: 'with no traits', sep: ', ',
+    play: 'Play', chooseCircle: 'Choose your circle', chooseSub: 'You can learn up to 3 of its traits during a run.', traitsLabel: list => `Traits: ${list}`,
+    pickTrait: 'Pick a trait', pickFull: 'You hold 3 traits, so these are upgrades.', pickSlots: n => `New traits fill a slot. You have ${n} left.`, level: (a, b) => `Level ${a} → ${b}`,
+    pickTool: 'Pick a tool', toolSub: 'Tools are single use. Tap one during a fight.', trainTitle: 'Training pays off', trainSub: 'Raise one stat.',
+    routeTitle: 'Choose your route', coinsLine: n => `You have ${n} coins.`, foe: (cls, phrase) => `vs ${cls} ${phrase}`,
+    shop: 'Shop', traitsH: 'Traits', toolsH: 'Tools', sold: 'Sold', price: n => `${n} coins`, leave: 'Leave shop',
+    stageTitle: (n, name) => `Stage ${n}: ${name}`, face: (id, cls, phrase) => `You face ${id === 'archer' ? 'an' : 'a'} ${cls} ${phrase}.`,
+    steerHint: 'Steer with WASD or the arrow keys, or hold on the arena.', poolHint: 'Press the Blood Pool button or Space to turn into a pool.', fight: 'Fight',
+    koTitle: n => `Knocked out at stage ${n}`, koSub: (f, best) => `You won ${f} fight${f === 1 ? '' : 's'} this run. Best run: ${best}.`, again: 'Play again',
+    pool: 'Blood Pool', poolActive: 'Blood Pool: active', poolCd: n => `Blood Pool: ${n}s`, poolReady: 'Blood Pool: ready', sudden: 'SUDDEN DEATH',
+  },
+  zh: {
+    brand: '圆球<span>乱斗</span>', logo: '圆球<br><span>乱斗</span>', langBtn: 'English', arena: '两个圆球对战的场地',
+    stage: '关卡', coins: '金币', best: '最佳', speed: '战斗速度', newRun: '重新开始', yourCircle: '你的圆球', rivalCircle: '对手的圆球',
+    rules: '圆球自由弹跳，互相碰撞本身不造成伤害。只有职业技能才会造成伤害：骑士的剑、弓箭手的箭、尖刺的刺和吸血鬼的撕咬。防御是每次受击被抵挡的比例。每个圆球最多掌握本职业的 3 个特性，每个特性有 3 级。战斗中点击道具即可使用。每场胜利获得 10 金币。45 秒后进入决胜阶段。输一场，本轮游戏就结束。',
+    you: '你', rival: '对手', tag: (who, cls) => `${who} · ${cls}`, hp: '生命', damage: '伤害', defense: '防御', speedStat: '速度',
+    tools: '道具', noTools: '暂无。赢下军械库的战斗，或去商店购买。', slots: (n, m) => `${n}/${m} 个特性`,
+    noTraitsYet: '还没有特性。', noTraits: '没有特性。', pressPlay: '点击“开始游戏”，选择骑士、弓箭手、尖刺或吸血鬼。',
+    pickRouteHint: '选择路线后就能看到下一个对手。', rivalsAre: '对手是带有随机特性的骑士、弓箭手、尖刺或吸血鬼。',
+    withTraits: list => `拥有${list}`, withNone: '没有特性', sep: '、',
+    play: '开始游戏', chooseCircle: '选择你的圆球', chooseSub: '一轮游戏中，最多可以学会它的 3 个特性。', traitsLabel: list => `特性：${list}`,
+    pickTrait: '选择一个特性', pickFull: '你已有 3 个特性，所以这些都是升级。', pickSlots: n => `新特性会占用一个栏位。你还剩 ${n} 个栏位。`, level: (a, b) => `等级 ${a} → ${b}`,
+    pickTool: '选择一件道具', toolSub: '道具只能用一次，战斗中点击即可使用。', trainTitle: '训练有了成果', trainSub: '提升一项属性。',
+    routeTitle: '选择路线', coinsLine: n => `你有 ${n} 金币。`, foe: (cls, phrase) => `对手：${cls}，${phrase}`,
+    shop: '商店', traitsH: '特性', toolsH: '道具', sold: '已售出', price: n => `${n} 金币`, leave: '离开商店',
+    stageTitle: (n, name) => `第 ${n} 关：${name}`, face: (id, cls, phrase) => `你的对手是${cls}，${phrase}。`,
+    steerHint: '用 WASD 或方向键操控，也可以按住场地。', poolHint: '按“血池”按钮或空格键化作血池。', fight: '开战',
+    koTitle: n => `在第 ${n} 关被击败`, koSub: (f, best) => `本轮你赢了 ${f} 场战斗。最佳纪录：${best}。`, again: '再来一局',
+    pool: '血池', poolActive: '血池：生效中', poolCd: n => `血池：${n} 秒`, poolReady: '血池：就绪', sudden: '决胜阶段',
+  },
+};
+function loadLang() { try { const v = localStorage.getItem('circleBrawlLang'); if (v === 'en' || v === 'zh') return v; } catch (e) {} return (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en'; }
+let LANG = loadLang();
+const zh = () => LANG === 'zh';
+function t(key, ...args) { const v = UI[LANG][key]; return typeof v === 'function' ? v(...args) : v; }
+const cName = id => zh() ? ZH.classes[id].name : CLASSES[id].name;
+const cAbility = id => zh() ? ZH.classes[id].ability : CLASSES[id].ability;
+const fxName = id => zh() ? ZH.fx[id].name : FX[id].name;
+const fxDesc = (id, s) => zh() ? ZH.fx[id].desc(s) : FX[id].desc(s);
+const toolName = id => zh() ? ZH.tools[id].name : TOOLS[id].name;
+const toolDesc = id => zh() ? ZH.tools[id].desc : TOOLS[id].desc;
+const routeName = type => zh() ? ZH.routes[type].name : ROUTES[type].name;
+const routeReward = (type, f) => zh() ? ZH.routes[type].reward(f) : ROUTES[type].reward(f);
+const statName = k => zh() ? ZH.stats[k] : STAT_NAMES[k];
+const floatText = s => zh() && ZH.floats[s] ? ZH.floats[s] : s;
+// Canvas text: the display face for Latin text and numbers, a heavy system face when the text is Chinese.
+function font(px, text) { return /[一-鿿]/.test(String(text)) ? `900 ${px}px "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif` : `${px}px Bungee, "Arial Black", sans-serif`; }
 
+function applyStatic() {
+  document.documentElement.lang = zh() ? 'zh-CN' : 'en';
+  $('brand').innerHTML = t('brand'); $('lang').textContent = t('langBtn'); cv.setAttribute('aria-label', t('arena'));
+  document.querySelectorAll('[data-t]').forEach(el => { el.textContent = t(el.dataset.t); });
+}
+// Switching language redraws the current screen with the same choices on it.
+function setLang(l) {
+  LANG = l; try { localStorage.setItem('circleBrawlLang', l); } catch (e) {}
+  applyStatic(); renderHud();
+  const p = G.phase;
+  if (p === 'title') titleOverlay(); else if (p === 'class') classOverlay(); else if (p === 'pick') showPick(true); else if (p === 'toolpick') showToolPick(true);
+  else if (p === 'statpick') showStatPick(true); else if (p === 'route') showRoute(true); else if (p === 'shop' && G.shop) showShop(); else if (p === 'ready') showReady(); else if (p === 'over') overOverlay();
+}
+$('lang').addEventListener('click', () => setLang(zh() ? 'en' : 'zh'));
+
+function traitList(build) { return Object.keys(build).map(id => fxName(id) + (build[id] > 1 ? ' ×' + build[id] : '')).join(t('sep')); }
+function traitPhrase(build) { return Object.keys(build).length ? t('withTraits', traitList(build)) : t('withNone'); }
+function statLine(st) { return `<div class="stats"><span>${t('hp')} <b>${Math.round(st.hp)}</b></span><span>${t('damage')} <b>${Math.round(st.dmg)}</b></span><span>${t('defense')} <b>${st.def}%</b></span><span>${t('speedStat')} <b>${st.spd}</b></span></div>`; }
+
+function titleOverlay() { showOverlay(`<p class="logo">${t('logo')}</p><button class="big" id="play">${t('play')}</button>`, 'title'); }
 function showTitle() {
   G = { phase: 'title', best: Math.max(G.best || 0, loadBest()) };
   fight = createFight(baseSpec('knight'), baseSpec('archer'), (Math.random() * 2 ** 31) | 0, true); resetFx();
-  renderHud();
-  showOverlay(`<p class="logo">Circle<br><span>Brawl</span></p><button class="big" id="play">Play</button>`, 'title');
+  renderHud(); titleOverlay();
+}
+function classOverlay() {
+  const cards = CLASS_IDS.map(id => {
+    const c = CLASSES[id];
+    return `<button class="card hero" data-class="${id}"><span class="name">${cName(id)}</span><span class="desc">${cAbility(id)}</span>${statLine(c.base)}<span class="foe">${t('traitsLabel', c.traits.map(fxName).join(t('sep')))}</span></button>`;
+  }).join('');
+  showOverlay(`<h2>${t('chooseCircle')}</h2><p>${t('chooseSub')}</p><div class="cards two">${cards}</div>`);
 }
 function showClassPick() {
   G = { phase: 'class', best: Math.max(G.best || 0, loadBest()) };
-  renderHud();
-  const cards = CLASS_IDS.map(id => {
-    const c = CLASSES[id];
-    return `<button class="card hero" data-class="${id}"><span class="name">${c.name}</span><span class="desc">${c.ability}</span>${statLine(c.base)}<span class="foe">Traits: ${c.traits.map(t => FX[t].name).join(', ')}</span></button>`;
-  }).join('');
-  showOverlay(`<h2>Choose your circle</h2><p>You can learn up to 3 of its traits during a run.</p><div class="cards two">${cards}</div>`);
+  renderHud(); classOverlay();
 }
 function startRun(cls) {
   G = { phase: 'ready', stage: 1, fights: 0, coins: 0, cls, stats: { ...CLASSES[cls].base }, build: {}, tools: {}, best: G.best, picks: 0, node: { type: 'trait', rival: makeRival(0, Math.random) }, routes: null, shop: null };
@@ -624,23 +754,23 @@ function startRun(cls) {
 
 function sheet(spec, emptyText) {
   const ids = Object.keys(spec.traits);
-  return statLine(spec.stats) + `<div class="ability">${CLASSES[spec.cls].ability}</div>` +
-    (ids.length ? '<ul>' + ids.map(id => `<li><strong>${FX[id].name}${spec.traits[id] > 1 ? ' ×' + spec.traits[id] : ''}</strong><br>${FX[id].desc(spec.traits[id])}</li>`).join('') + '</ul>' : `<ul><li>${emptyText}</li></ul>`);
+  return statLine(spec.stats) + `<div class="ability">${cAbility(spec.cls)}</div>` +
+    (ids.length ? '<ul>' + ids.map(id => `<li><strong>${fxName(id)}${spec.traits[id] > 1 ? ' ×' + spec.traits[id] : ''}</strong><br>${fxDesc(id, spec.traits[id])}</li>`).join('') + '</ul>' : `<ul><li>${emptyText}</li></ul>`);
 }
 function renderTools() {
   const ids = TOOL_IDS.filter(id => G.tools && G.tools[id] > 0);
   const live = G.phase === 'fight' && fight && !fight.over;
-  const pool = G.build && G.build.pool ? '<button class="chip tool" id="poolBtn" disabled>Blood Pool</button>' : '';
-  $('tools').innerHTML = pool + '<span>Tools</span>' + (ids.length
-    ? ids.map(id => `<button class="chip tool" data-tool="${id}" title="${TOOLS[id].desc}" ${live ? '' : 'disabled'}>${TOOLS[id].name} ×${G.tools[id]}</button>`).join('')
-    : '<span>None. Win an Armory fight or visit a Shop.</span>');
+  const pool = G.build && G.build.pool ? `<button class="chip tool" id="poolBtn" disabled>${t('pool')}</button>` : '';
+  $('tools').innerHTML = pool + `<span>${t('tools')}</span>` + (ids.length
+    ? ids.map(id => `<button class="chip tool" data-tool="${id}" title="${toolDesc(id)}" ${live ? '' : 'disabled'}>${toolName(id)} ×${G.tools[id]}</button>`).join('')
+    : `<span>${t('noTools')}</span>`);
   updatePoolBtn();
 }
 // The Blood Pool button shows its cooldown and only works during a fight.
 function updatePoolBtn() {
   const btn = $('poolBtn'); if (!btn) return;
   const live = G.phase === 'fight' && fight && !fight.over, c = fight && fight.a;
-  const label = !live ? 'Blood Pool' : c.poolT > 0 ? 'Blood Pool: active' : c.poolCd > 0 ? `Blood Pool: ${Math.ceil(c.poolCd)}s` : 'Blood Pool: ready';
+  const label = !live ? t('pool') : c.poolT > 0 ? t('poolActive') : c.poolCd > 0 ? t('poolCd', Math.ceil(c.poolCd)) : t('poolReady');
   if (btn.textContent !== label) btn.textContent = label;
   btn.disabled = !(live && c.poolT <= 0 && c.poolCd <= 0);
 }
@@ -649,12 +779,12 @@ function renderHud() {
   $('stage').textContent = inRun ? G.stage : 1;
   $('coins').textContent = inRun ? G.coins : 0;
   $('best').textContent = G.best || 0;
-  $('youName').textContent = inRun ? `You · ${CLASSES[G.cls].name}` : 'You';
+  $('youName').textContent = inRun ? t('tag', t('you'), cName(G.cls)) : t('you');
   const choosing = !inRun || G.phase === 'route' || G.phase === 'shop';
-  $('rivalName').textContent = choosing ? 'Rival' : `Rival · ${CLASSES[G.node.rival.cls].name}`;
-  $('slots').textContent = inRun ? `${Object.keys(G.build).length}/${MAX_TRAITS} traits` : '';
-  $('buildYou').innerHTML = inRun ? sheet(me(), 'No traits yet.') : '<div class="none">Press Play and choose a Knight, an Archer, a Spike or a Vampire.</div>';
-  $('buildRival').innerHTML = choosing ? `<div class="none">${inRun ? 'Pick a route to meet your next rival.' : 'Rivals are Knights, Archers, Spikes or Vampires with random traits.'}</div>` : sheet(G.node.rival, 'No traits.');
+  $('rivalName').textContent = choosing ? t('rival') : t('tag', t('rival'), cName(G.node.rival.cls));
+  $('slots').textContent = inRun ? t('slots', Object.keys(G.build).length, MAX_TRAITS) : '';
+  $('buildYou').innerHTML = inRun ? sheet(me(), t('noTraitsYet')) : `<div class="none">${t('pressPlay')}</div>`;
+  $('buildRival').innerHTML = choosing ? `<div class="none">${inRun ? t('pickRouteHint') : t('rivalsAre')}</div>` : sheet(G.node.rival, t('noTraits'));
   renderTools(); renderBars();
 }
 function renderBars() {
@@ -667,31 +797,34 @@ function renderBars() {
   $('arena').classList.toggle('sudden', G.phase === 'fight' && fight.t > SUDDEN_AT);
 }
 
-// Trait pick as a reward. G.picks counts how many picks are left.
-function showPick() {
+// Reward screens keep their rolled choices in G, so redrawing one (a language switch, a reload) never rerolls it.
+function showPick(keep) {
   G.phase = 'pick';
-  const choices = rollChoices(G.cls, G.build, Math.random);
-  if (!choices.length || G.picks <= 0) { if (!choices.length) G.coins += 25 * Math.max(0, G.picks); G.picks = 0; showRoute(false); return; }
+  if (!keep || !G.choices) G.choices = rollChoices(G.cls, G.build, Math.random);
+  const choices = G.choices;
+  if (!choices.length || G.picks <= 0) { if (!choices.length) G.coins += 25 * Math.max(0, G.picks); G.picks = 0; G.choices = null; showRoute(false); return; }
   const full = Object.keys(G.build).length >= MAX_TRAITS;
   const cards = choices.map(id => {
     const have = G.build[id] || 0;
-    return `<button class="card" data-pick="${id}"><span class="name">${FX[id].name}</span>${have ? `<span class="lvl">Level ${have} → ${have + 1}</span>` : ''}<span class="desc">${FX[id].desc(have + 1)}</span></button>`;
+    return `<button class="card" data-pick="${id}"><span class="name">${fxName(id)}</span>${have ? `<span class="lvl">${t('level', have, have + 1)}</span>` : ''}<span class="desc">${fxDesc(id, have + 1)}</span></button>`;
   }).join('');
-  showOverlay(`<h2>Pick a trait</h2><p>${full ? 'You hold 3 traits, so these are upgrades.' : `New traits fill a slot. You have ${MAX_TRAITS - Object.keys(G.build).length} left.`}</p><div class="cards">${cards}</div>`);
+  showOverlay(`<h2>${t('pickTrait')}</h2><p>${full ? t('pickFull') : t('pickSlots', MAX_TRAITS - Object.keys(G.build).length)}</p><div class="cards">${cards}</div>`);
 }
-function showToolPick() {
+function showToolPick(keep) {
   G.phase = 'toolpick';
-  const cards = sample(TOOL_IDS, 3, Math.random).map(id => `<button class="card" data-gettool="${id}"><span class="name">${TOOLS[id].name}</span><span class="desc">${TOOLS[id].desc}</span></button>`).join('');
-  showOverlay(`<h2>Pick a tool</h2><p>Tools are single use. Tap one during a fight.</p><div class="cards">${cards}</div>`);
+  if (!keep || !G.toolChoices) G.toolChoices = sample(TOOL_IDS, 3, Math.random);
+  const cards = G.toolChoices.map(id => `<button class="card" data-gettool="${id}"><span class="name">${toolName(id)}</span><span class="desc">${toolDesc(id)}</span></button>`).join('');
+  showOverlay(`<h2>${t('pickTool')}</h2><p>${t('toolSub')}</p><div class="cards">${cards}</div>`);
 }
-function showStatPick() {
+function showStatPick(keep) {
   G.phase = 'statpick';
-  const up = CLASSES[G.cls].up, pool = Object.keys(up).filter(k => k !== 'def' || G.stats.def < 60);
-  const cards = sample(pool, 2, Math.random).map(k => {
+  const up = CLASSES[G.cls].up;
+  if (!keep || !G.statChoices) G.statChoices = sample(Object.keys(up).filter(k => k !== 'def' || G.stats.def < 60), 2, Math.random);
+  const cards = G.statChoices.map(k => {
     const pct = k === 'def' ? '%' : '';
-    return `<button class="card" data-stat="${k}"><span class="name">${STAT_NAMES[k]} +${up[k]}${pct}</span><span class="desc">${G.stats[k]}${pct} → ${G.stats[k] + up[k]}${pct}</span></button>`;
+    return `<button class="card" data-stat="${k}"><span class="name">${statName(k)} +${up[k]}${pct}</span><span class="desc">${G.stats[k]}${pct} → ${G.stats[k] + up[k]}${pct}</span></button>`;
   }).join('');
-  showOverlay(`<h2>Training pays off</h2><p>Raise one stat.</p><div class="cards two">${cards}</div>`);
+  showOverlay(`<h2>${t('trainTitle')}</h2><p>${t('trainSub')}</p><div class="cards two">${cards}</div>`);
 }
 
 function showRoute(keep) {
@@ -699,10 +832,10 @@ function showRoute(keep) {
   if (!keep || !G.routes) G.routes = rollRoutes(G.fights, Math.random, G.justShopped);
   renderHud();
   const cards = G.routes.map((r, i) => {
-    const foe = r.type === 'shop' ? '' : `<span class="foe">vs ${CLASSES[r.rival.cls].name} with ${traitNames(r.rival.traits)}</span>`;
-    return `<button class="card" data-route="${i}"><span class="name">${ROUTES[r.type].name}</span><span class="desc">${ROUTES[r.type].reward(G.fights)}</span>${foe}</button>`;
+    const foe = r.type === 'shop' ? '' : `<span class="foe">${t('foe', cName(r.rival.cls), traitPhrase(r.rival.traits))}</span>`;
+    return `<button class="card" data-route="${i}"><span class="name">${routeName(r.type)}</span><span class="desc">${routeReward(r.type, G.fights)}</span>${foe}</button>`;
   }).join('');
-  showOverlay(`<h2>Choose your route</h2><p>You have ${G.coins} coins.</p><div class="cards">${cards}</div>`);
+  showOverlay(`<h2>${t('routeTitle')}</h2><p>${t('coinsLine', G.coins)}</p><div class="cards">${cards}</div>`);
 }
 function takeRoute(i) {
   const r = G.routes[i]; if (!r) return;
@@ -715,16 +848,16 @@ function showShop() {
   const s = G.shop, open = openTraits(G.cls, G.build, false);
   const tc = s.traits.map(id => {
     const have = G.build[id] || 0, price = traitPrice(have), sold = s.sold.includes(id) || !open.includes(id);
-    return `<button class="card" data-buytrait="${id}" ${sold || G.coins < price ? 'disabled' : ''}><span class="name">${FX[id].name}</span>${have ? `<span class="lvl">Level ${have} → ${Math.min(MAX_LEVEL, have + 1)}</span>` : ''}<span class="desc">${FX[id].desc(Math.min(MAX_LEVEL, have + 1))}</span><span class="price">${sold ? 'Sold' : price + ' coins'}</span></button>`;
+    return `<button class="card" data-buytrait="${id}" ${sold || G.coins < price ? 'disabled' : ''}><span class="name">${fxName(id)}</span>${have ? `<span class="lvl">${t('level', have, Math.min(MAX_LEVEL, have + 1))}</span>` : ''}<span class="desc">${fxDesc(id, Math.min(MAX_LEVEL, have + 1))}</span><span class="price">${sold ? t('sold') : t('price', price)}</span></button>`;
   }).join('');
-  const oc = s.tools.map(id => `<button class="card" data-buytool="${id}" ${G.coins < TOOLS[id].price ? 'disabled' : ''}><span class="name">${TOOLS[id].name}</span><span class="desc">${TOOLS[id].desc}</span><span class="price">${TOOLS[id].price} coins</span></button>`).join('');
-  showOverlay(`<h2>Shop</h2><p>You have ${G.coins} coins.</p>${tc ? `<h4>Traits</h4><div class="cards">${tc}</div>` : ''}<h4>Tools</h4><div class="cards">${oc}</div><button class="big" id="leave">Leave shop</button>`);
+  const oc = s.tools.map(id => `<button class="card" data-buytool="${id}" ${G.coins < TOOLS[id].price ? 'disabled' : ''}><span class="name">${toolName(id)}</span><span class="desc">${toolDesc(id)}</span><span class="price">${t('price', TOOLS[id].price)}</span></button>`).join('');
+  showOverlay(`<h2>${t('shop')}</h2><p>${t('coinsLine', G.coins)}</p>${tc ? `<h4>${t('traitsH')}</h4><div class="cards">${tc}</div>` : ''}<h4>${t('toolsH')}</h4><div class="cards">${oc}</div><button class="big" id="leave">${t('leave')}</button>`);
 }
 function showReady() {
   G.phase = 'ready';
   previewFight(); renderHud();
   const rv = G.node.rival;
-  showOverlay(`<h2>Stage ${G.stage}: ${ROUTES[G.node.type].name}</h2><p>You face ${rv.cls === 'archer' ? 'an' : 'a'} ${CLASSES[rv.cls].name} with ${traitNames(rv.traits)}.</p>${G.build.control ? '<p>Steer with WASD or the arrow keys, or hold on the arena.</p>' : ''}${G.build.pool ? '<p>Press the Blood Pool button or Space to turn into a pool.</p>' : ''}<button class="big" id="go">Fight</button>`);
+  showOverlay(`<h2>${t('stageTitle', G.stage, routeName(G.node.type))}</h2><p>${t('face', rv.cls, cName(rv.cls), traitPhrase(rv.traits))}</p>${G.build.control ? `<p>${t('steerHint')}</p>` : ''}${G.build.pool ? `<p>${t('poolHint')}</p>` : ''}<button class="big" id="go">${t('fight')}</button>`);
   $('go').focus();
 }
 function startFight() {
@@ -732,6 +865,7 @@ function startFight() {
   fight = createFight(me(), G.node.rival, (Math.random() * 2 ** 31) | 0); resetFx();
   overlay.hidden = true; renderTools();
 }
+function overOverlay() { showOverlay(`<h2>${t('koTitle', G.stage)}</h2><p>${t('koSub', G.fights, G.best)}</p><button class="big" id="again">${t('again')}</button>`); $('again').focus(); }
 function endFight() {
   renderBars();
   const wait = reduceMotion ? 300 : 900;
@@ -740,15 +874,12 @@ function endFight() {
     G.fights++; G.best = Math.max(G.best, G.fights); saveBest(G.best);
     G.coins += WIN_COINS + (type === 'bounty' ? bountyCoins(G.fights - 1) : 0);
     G.picks = type === 'trait' ? 1 : 0;
-    G.phase = { trait: 'pick', tool: 'toolpick', stat: 'statpick' }[type] || 'route';
-    renderTools();
+    G.choices = G.toolChoices = G.statChoices = null;
+    G.phase = 'reward'; renderTools();
     setTimeout(() => { previewFight(); renderHud(); if (type === 'tool') showToolPick(); else if (type === 'stat') showStatPick(); else if (G.picks) showPick(); else showRoute(false); }, wait);
   } else {
-    G.phase = 'over'; renderTools();
-    setTimeout(() => {
-      showOverlay(`<h2>Knocked out at stage ${G.stage}</h2><p>You won ${G.fights} fight${G.fights === 1 ? '' : 's'} this run. Best run: ${G.best}.</p><button class="big" id="again">Play again</button>`);
-      $('again').focus();
-    }, wait);
+    G.phase = 'ko'; renderTools();
+    setTimeout(() => { G.phase = 'over'; overOverlay(); }, wait);
   }
 }
 
@@ -757,9 +888,9 @@ overlay.addEventListener('click', e => {
   const d = b.dataset;
   if (b.id === 'play' || b.id === 'again') showClassPick();
   else if (d.class) startRun(d.class);
-  else if (d.pick) { G.build = addTrait(G.build, d.pick); G.picks--; renderHud(); if (G.picks > 0) showPick(); else showRoute(false); }
-  else if (d.gettool) { G.tools[d.gettool] = (G.tools[d.gettool] || 0) + 1; showRoute(false); }
-  else if (d.stat) { G.stats[d.stat] += CLASSES[G.cls].up[d.stat]; showRoute(false); }
+  else if (d.pick) { G.build = addTrait(G.build, d.pick); G.picks--; G.choices = null; renderHud(); if (G.picks > 0) showPick(); else showRoute(false); }
+  else if (d.gettool) { G.tools[d.gettool] = (G.tools[d.gettool] || 0) + 1; G.toolChoices = null; showRoute(false); }
+  else if (d.stat) { G.stats[d.stat] += CLASSES[G.cls].up[d.stat]; G.statChoices = null; showRoute(false); }
   else if (d.route) takeRoute(+d.route);
   else if (d.buytrait) { const id = d.buytrait, price = traitPrice(G.build[id] || 0); if (G.coins >= price) { G.coins -= price; G.build = addTrait(G.build, id); G.shop.sold.push(id); showShop(); } }
   else if (d.buytool) { const id = d.buytool; if (G.coins >= TOOLS[id].price) { G.coins -= TOOLS[id].price; G.tools[id] = (G.tools[id] || 0) + 1; showShop(); } }
@@ -814,7 +945,7 @@ function drainEvents() {
       burst(e.x, e.y, e.side === 0 ? COL.you : COL.rival, big ? 16 : 6);
       shake = reduceMotion ? 0 : Math.max(shake, big ? 9 : 5);
     }
-    else if (e.type === 'text') floats.push({ x: e.x, y: e.y - 70, text: e.text, color: e.dim ? COL.muted : COL.gold, life: 1, size: e.dim ? 14 : 18 });
+    else if (e.type === 'text') floats.push({ x: e.x, y: e.y - 70, text: floatText(e.text), color: e.dim ? COL.muted : COL.gold, life: 1, size: e.dim ? 14 : 18 });
   }
   fight.events.length = 0;
 }
@@ -914,8 +1045,8 @@ function draw(dt) {
   ctx.globalAlpha = 1;
   if (G.phase === 'fight' && fight.t > SUDDEN_AT) {
     ctx.fillStyle = COL.you; ctx.globalAlpha = 0.08 + 0.05 * Math.sin(fight.t * 8); ctx.fillRect(0, 0, ARENA, ARENA); ctx.globalAlpha = 1;
-    ctx.fillStyle = COL.you; ctx.font = '20px Bungee, "Arial Black", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText('SUDDEN DEATH', ARENA / 2, 12);
+    ctx.fillStyle = COL.you; ctx.font = font(20, t('sudden')); ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillText(t('sudden'), ARENA / 2, 12);
   }
   for (const st of fight.stings) { // stings sit on the wall, in their owner's colour
     ctx.fillStyle = st.side === 0 ? COL.you : COL.rival; ctx.strokeStyle = COL.ink; ctx.lineWidth = 2;
@@ -949,7 +1080,7 @@ function draw(dt) {
   ctx.globalAlpha = 1;
   for (const fl of floats) {
     ctx.globalAlpha = Math.min(1, fl.life * 2.5); ctx.fillStyle = fl.color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = `${fl.size}px Bungee, "Arial Black", sans-serif`; ctx.fillText(fl.text, Math.max(70, Math.min(ARENA - 70, fl.x)), Math.max(16, fl.y));
+    ctx.font = font(fl.size, fl.text); ctx.fillText(fl.text, Math.max(70, Math.min(ARENA - 70, fl.x)), Math.max(16, fl.y));
   }
   ctx.globalAlpha = 1;
   ctx.restore();
@@ -976,12 +1107,14 @@ function frame(now) {
 }
 
 function start(saved) {
-  if (saved && saved.cls && saved.node && saved.node.rival && saved.node.rival.cls && saved.phase !== 'over') {
+  applyStatic();
+  if (saved && saved.cls && saved.node && saved.node.rival && saved.node.rival.cls && saved.phase !== 'over' && saved.phase !== 'ko') {
     G = saved; G.best = Math.max(G.best || 0, loadBest()); G.tools = G.tools || {};
     previewFight(); renderHud();
-    if (G.phase === 'pick') showPick();
-    else if (G.phase === 'toolpick') showToolPick();
-    else if (G.phase === 'statpick') showStatPick();
+    if (G.phase === 'pick') showPick(true);
+    else if (G.phase === 'toolpick') showToolPick(true);
+    else if (G.phase === 'statpick') showStatPick(true);
+    else if (G.phase === 'reward') showRoute(false);
     else if (G.phase === 'route') showRoute(true);
     else if (G.phase === 'shop' && G.shop) showShop();
     else showReady();
