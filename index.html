@@ -157,12 +157,16 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 //<sim>
 // ---------- Simulation: no DOM in this block, so it can run headless for balance tests ----------
 const ARENA = 600, DT = 1 / 120, SUDDEN_AT = 45, RADIUS = 56, MAX_TRAITS = 3, MAX_LEVEL = 3;
-const SWORD_LEN = 96, CLEAVE_ZONE = 120, ROPE_SPEED = 1100;
-const SHIELD_CD = [0, 10, 8, 6], CLEAVE_CD = [0, 7, 6, 5], CLEAVE_MULT = 1.2;
-const SHOOT_EVERY = [5, 4, 3.2, 2.5], ARROW_SPEED = 900, ARROW_SPREAD = 0.3, KICK_CD = [0, 5, 4, 3], KICK_MULT = [0, 0.6, 0.8, 1], STUN_EVERY = [0, 3, 2, 1], STUN_SECS = 1.5, DOUBLE = [0, 0.2, 0.35, 0.5];
-const POISON = [0, 3, 5, 7], POISON_SECS = 4, GRAB_CD = [0, 5, 4, 3], STING_MULT = [0, 0.6, 0.9, 1.2], VOLLEY_CD = [0, 6, 5, 4], VOLLEY_MULT = 0.4;
-const LATCH_SECS = 2, LATCH_CD = 4.5, LEECH = [0.3, 0.5, 0.7, 0.9], SPIKE_PRICK = 0.15, BAT_CD = [0, 9, 7.5, 6], BAT_SECS = 0.9, BAT_MULT = 0.8;
-const SERV_CD = [0, 8, 6.5, 5], SERV_MULT = 0.6, SERV_R = 14, POOL_CD = [0, 12, 10, 8], POOL_HEAL = [0, 10, 15, 20], POOL_SECS = 2, FRENZY = [0, 0.08, 0.12, 0.16];
+const SWORD_LEN = 85, CLEAVE_ZONE = 120, ROPE_SPEED = 1500;
+const SWORD_SHARE = [1, 0.6, 0.45], SHIELD_CD = [0, 8, 6, 4], CLEAVE_CD = [0, 7, 6, 5], CLEAVE_MULT = [0, 1.2, 1.5, 1.8];
+const SHOOT_EVERY = [5, 4, 3.2, 2.5], ARROW_SPEED = 900, ARROW_SPREAD = 0.3, KICK_CD = [0, 5, 4, 3], KICK_MULT = [0, 0.6, 0.8, 1], DOUBLE = [0, 0.2, 0.35, 0.5];
+const STUN_CHANCE = [0, 0.2, 0.3, 0.4], STUN_SECS = 1.2, STUN_IMMUNE = 3, STUN_HOMING = 1, STUN_TURN = 2.5;
+const POISON = [0, 3.5, 4.5, 5.5], POISON_SECS = 4, GRAB_CD = [0, 5, 4.5, 4], SILENCE = [0, 1, 1.2, 1.4], STING_MULT = [0, 0.6, 0.9, 1.2];
+const SHOT_MULT = [0, 0.25, 0.32, 0.35], SHOT_BARE = [0, 7, 6, 5], SHOT_SPIKES = 16, SHOT_SPEED = 650;
+const LATCH_SECS = 2, LATCH_CD = 4.5, BITES = [3, 4, 5], LEECH = [0.3, 0.5, 0.65, 0.8], SPIKE_PRICK = 0.15, BAT_CD = [0, 8, 6.5, 5], BAT_SECS = 0.9, BAT_MULT = [0, 1, 1.3, 1.6], REGEN = [0, 1, 2, 3];
+const SERV_CD = [0, 8, 6.5, 5], SERV_MULT = 0.6, SERV_R = 14, POOL_HEAL = [0, 20, 30, 40], POOL_SECS = 2.5, POOL_MULT = [0, 1.5, 2, 2.5];
+// The two buttons you press yourself. Each works once per fight.
+const ACTIVE = { vampire: 'pool', spike: 'spikeshot' };
 
 function mulberry32(a) {
   return function () {
@@ -176,8 +180,8 @@ function mulberry32(a) {
 // Classes: a main ability, starting stats, how much one Training win adds to each stat, and the traits that upgrade the ability.
 const CLASSES = {
   knight: {
-    name: 'Knight', ability: 'A sword circles the Knight and cuts the rival on contact. Low to moderate damage per cut.',
-    base: { hp: 105, dmg: 15, def: 20, spd: 34 }, up: { hp: 15, dmg: 3, def: 5, spd: 3 },
+    name: 'Knight', ability: 'A sword circles the Knight and cuts the rival on contact. Tough, with moderate damage.',
+    base: { hp: 110, dmg: 14, def: 30, spd: 34 }, up: { hp: 15, dmg: 3, def: 5, spd: 3 },
     traits: ['swords', 'spin', 'shield', 'reach', 'cleave'],
   },
   archer: {
@@ -188,12 +192,12 @@ const CLASSES = {
   spike: {
     name: 'Spike', ability: 'Covered in spikes. Deals damage every time it collides with the rival.',
     base: { hp: 100, dmg: 12, def: 10, spd: 38 }, up: { hp: 15, dmg: 3, def: 5, spd: 3 },
-    traits: ['poison', 'grab', 'stings', 'bulk', 'volley'],
+    traits: ['poison', 'grab', 'stings', 'bulk', 'spikeshot'],
   },
   vampire: {
     name: 'Vampire', ability: 'Latches onto the rival on contact and bites 3 times over 2 seconds, healing for 30% of the damage dealt. A bitten Knight cannot swing its swords.',
     base: { hp: 92, dmg: 10, def: 10, spd: 45 }, up: { hp: 15, dmg: 2, def: 5, spd: 3 },
-    traits: ['thirst', 'bat', 'servants', 'pool', 'frenzy'],
+    traits: ['thirst', 'bat', 'servants', 'pool', 'longbite'],
   },
 };
 const CLASS_IDS = Object.keys(CLASSES);
@@ -201,30 +205,32 @@ const STAT_NAMES = { hp: 'Max HP', dmg: 'Damage', def: 'Defense', spd: 'Speed' }
 
 const FX = {
   // Knight
-  swords:  { name: 'Twin Swords',  desc: s => `Carry ${s + 1} swords.` },
+  swords:  { name: 'Twin Swords',  desc: s => `Carry ${s + 1} swords, each dealing ${Math.round(SWORD_SHARE[s] * 100)}% damage.`, max: 2 },
   spin:    { name: 'Swift Blades', desc: s => `Swords spin ${40 * s}% faster.` },
   shield:  { name: 'Shield',       desc: s => `Blocks one hit every ${SHIELD_CD[s]} seconds.` },
   reach:   { name: 'Great Sword',  desc: s => `Swords are ${30 * s}% bigger.` },
-  cleave:  { name: 'Great Cleave', desc: s => `When the rival enters your hit zone, a huge sword sweeps through it for ${Math.round(CLEAVE_MULT * 100)}% damage and flings the rival along the swing. ${CLEAVE_CD[s]} second cooldown.` },
+  cleave:  { name: 'Great Cleave', desc: s => `When the rival enters your hit zone, a huge sword sweeps through it for ${Math.round(CLEAVE_MULT[s] * 100)}% damage and flings the rival along the swing. ${CLEAVE_CD[s]} second cooldown.` },
   // Archer
   rapid:   { name: 'Rapid Fire',   desc: s => `Shoot every ${SHOOT_EVERY[s]} seconds instead of 5.` },
-  stun:    { name: 'Stun Arrow',   desc: s => `${['', 'Every 3rd arrow', 'Every 2nd arrow', 'Every arrow'][s]} is a glowing stun arrow. It tracks the rival, so it never misses, and stuns for ${STUN_SECS} seconds.` },
+  stun:    { name: 'Stun Arrow',   desc: s => `Each arrow has a ${Math.round(STUN_CHANCE[s] * 100)}% chance to be a glowing stun arrow. It curves toward the rival for ${STUN_HOMING} second and stuns for ${STUN_SECS} seconds. A stunned rival can't be stunned again for ${STUN_IMMUNE} seconds.` },
   kick:    { name: 'Kick',         desc: s => `When the rival gets close, kick it away for ${Math.round(KICK_MULT[s] * 100)}% damage. ${KICK_CD[s]} second cooldown.` },
   double:  { name: 'Double Shot',  desc: s => `Each shot has a ${Math.round(DOUBLE[s] * 100)}% chance to fire a second arrow.` },
   control: { name: 'Free Rein',    desc: s => `Steer your circle with WASD or the arrow keys, or by holding on the arena.${s > 1 ? ` +${15 * (s - 1)}% speed.` : ''}`, playerOnly: true },
   // Spike
   poison:  { name: 'Poisonous Sting', desc: s => `Collisions poison the rival for ${POISON[s]} damage per second over ${POISON_SECS} seconds. Poison ignores your Damage stat and the rival's Defense.` },
-  grab:    { name: 'Grab',            desc: s => `Every ${GRAB_CD[s]} seconds, shoot a rope at the rival. If it lands, the rival is yanked toward you.` },
+  grab:    { name: 'Grab',            desc: s => `Every ${GRAB_CD[s]} seconds, shoot a rope at the rival. If it lands, the rival is yanked toward you and silenced for ${SILENCE[s]} seconds: no attacks and no abilities.` },
   stings:  { name: 'Wall Stings',     desc: s => `Bouncing off a wall leaves a sting there. The rival takes ${Math.round(STING_MULT[s] * 100)}% damage when it touches one, and the sting is used up.` },
   bulk:    { name: 'Bulk',            desc: s => `${12 * s}% larger and +${20 * s} max HP.` },
-  volley:  { name: 'Thorn Volley',    desc: s => `Every ${VOLLEY_CD[s]} seconds, fire 8 thorns in all directions. Each deals ${Math.round(VOLLEY_MULT * 100)}% damage.` },
+  spikeshot: { name: 'Spike Shot',    desc: s => `Press the Spike Shot button or Space to fire all ${SHOT_SPIKES} spikes at the rival, each dealing ${Math.round(SHOT_MULT[s] * 100)}% damage. Once per fight. Your spikes take ${SHOT_BARE[s]} seconds to grow back, and collisions deal no damage until they do.`, active: true },
   // Vampire
-  thirst:   { name: 'Thirst',         desc: s => `Heal for ${Math.round(LEECH[s] * 100)}% of the damage you deal instead of 30%.` },
-  bat:      { name: 'Bat Form',       desc: s => `Every ${BAT_CD[s]} seconds, turn into a bat and dash at the rival. You take no damage while dashing, and passing through the rival deals ${Math.round(BAT_MULT * 100)}% damage and heals you.` },
+  thirst:   { name: 'Thirst',         desc: s => `Heal for ${Math.round(LEECH[s] * 100)}% of the damage you deal instead of 30%, and regenerate ${REGEN[s]} HP per second.` },
+  bat:      { name: 'Bat Form',       desc: s => `Every ${BAT_CD[s]} seconds, turn into a bat and dash at the rival. You take no damage while dashing, and passing through the rival deals ${Math.round(BAT_MULT[s] * 100)}% damage and heals you.` },
   servants: { name: 'Blood Servants', desc: s => `Every ${SERV_CD[s]} seconds, spawn 2 small circles that chase the rival. Each deals ${Math.round(SERV_MULT * 100)}% damage, heals you, and vanishes on contact.` },
-  pool:     { name: 'Blood Pool',     desc: s => `Press the Blood Pool button or Space to melt into a pool of blood for ${POOL_SECS} seconds. You take no damage and heal ${POOL_HEAL[s]} HP. ${POOL_CD[s]} second cooldown.` },
-  frenzy:   { name: 'Blood Frenzy',   desc: s => `Each bite that lands gives +${Math.round(FRENZY[s] * 100)}% damage for the rest of the fight, up to 5 times.` },
+  pool:     { name: 'Blood Pool',     desc: s => `Press the Blood Pool button or Space to melt into a pool of blood for ${POOL_SECS} seconds. You take no damage and heal ${POOL_HEAL[s]} HP, and a rival that crosses the pool takes ${Math.round(POOL_MULT[s] * 100)}% damage. Once per fight.`, active: true },
+  longbite: { name: 'Long Bite',      desc: s => `Bite ${BITES[s]} times each time you latch on, instead of 3.`, max: 2 },
 };
+// Most traits have 3 levels. A few stop sooner.
+function maxLv(id) { return FX[id].max || MAX_LEVEL; }
 
 // Tools are used by hand during a fight. Each use spends one.
 const TOOLS = {
@@ -246,9 +252,9 @@ function makeCircle(side, spec) {
     speed: st.spd * 10 * (1 + 0.15 * Math.max(0, s('control') - 1)),
     swordAng: side * Math.PI, swordCd: [0, 0, 0, 0], aim: 0, cleaveT: 2, cleaveFx: 0, cleaveAng: 0,
     shootT: SHOOT_EVERY[s('rapid')] / 2, extraT: 0, kickT: 1,
-    spikeCd: 0, grabT: 2.5, volleyT: 3, poisonDps: 0, poisonT: 0, shots: 0,
-    latchT: 0, latchCd: 0, biteT: 0, latchAng: 0, frenzy: 0, batT: 0, batCd: 3, batHit: false, servT: 2, poolT: 0, poolCd: 0,
-    shieldT: 0, invuln: 0, frozen: 0, rage: 0, flash: 0,
+    spikeCd: 0, grabT: 2.5, poisonDps: 0, poisonT: 0, bareT: 0,
+    latchT: 0, latchCd: 0, biteT: 0, biteGap: LATCH_SECS / 3, latchAng: 0, batT: 0, batCd: 3, batHit: false, servT: 2, poolT: 0, poolHit: false,
+    activeUsed: false, silence: 0, stunImmune: 0, shieldT: 0, invuln: 0, frozen: 0, rage: 0, flash: 0,
   };
 }
 function swordCount(c) { return c.cls === 'knight' ? 1 + c.s('swords') : 0; }
@@ -258,7 +264,7 @@ function swordSpin(c) { return 4.6 * (1 + 0.4 * c.s('spin')); }
 
 function createFight(you, rival, seed, demo) {
   const rng = mulberry32(seed);
-  const f = { a: makeCircle(0, you), b: makeCircle(1, rival), arrows: [], ropes: [], thorns: [], stings: [], servants: [], poolPress: false, t: 0, over: false, winner: -1, rng, events: [], demo: !!demo, input: null };
+  const f = { a: makeCircle(0, you), b: makeCircle(1, rival), arrows: [], ropes: [], thorns: [], stings: [], servants: [], activePress: false, t: 0, over: false, winner: -1, rng, events: [], demo: !!demo, input: null };
   for (const c of [f.a, f.b]) {
     const ang = (c.side === 0 ? -Math.PI / 4 : Math.PI * 3 / 4) + (rng() - 0.5) * 1.2;
     c.vx = Math.cos(ang) * c.speed; c.vy = Math.sin(ang) * c.speed;
@@ -289,11 +295,24 @@ function attack(f, att, tgt, mult, kind) {
 // Send a circle flying in a direction. It eases back to its normal speed afterwards.
 // Being launched also tears a Vampire off whatever it was biting.
 function launch(o, ang, mult) { const sp = Math.max(o.speed, 300) * mult; o.vx = Math.cos(ang) * sp; o.vy = Math.sin(ang) * sp; if (o.latchT > 0) { o.latchT = 0; o.latchCd = Math.max(o.latchCd, 1); } }
-// A Vampire's hits: Blood Frenzy raises the damage, and every hit heals.
+// A Vampire's hits heal it.
 function drain(f, c, o, mult) {
-  const dealt = attack(f, c, o, mult * (1 + FRENZY[c.s('frenzy')] * c.frenzy), 'bite');
+  const dealt = attack(f, c, o, mult, 'bite');
   heal(c, dealt * LEECH[c.s('thirst')]);
   return dealt;
+}
+// Where a circle will be after t seconds if it keeps going, bouncing off the walls.
+function predict(o, t) {
+  const lo = o.r, span = ARENA - 2 * o.r;
+  const fold = v => { let u = ((v - lo) % (2 * span) + 2 * span) % (2 * span); return lo + (u > span ? 2 * span - u : u); };
+  return [fold(o.x + o.vx * t), fold(o.y + o.vy * t)];
+}
+// Aim a projectile at where the rival will be when it arrives.
+function leadAim(c, o, speed) {
+  if (o.frozen > 0 || o.poolT > 0) return Math.atan2(o.y - c.y, o.x - c.x);
+  let t = Math.hypot(o.x - c.x, o.y - c.y) / speed, p;
+  for (let i = 0; i < 3; i++) { p = predict(o, t); t = Math.hypot(p[0] - c.x, p[1] - c.y) / speed; }
+  return Math.atan2(p[1] - c.y, p[0] - c.x);
 }
 function segDist(px, py, x1, y1, x2, y2) {
   const dx = x2 - x1, dy = y2 - y1, t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)));
@@ -302,18 +321,19 @@ function segDist(px, py, x1, y1, x2, y2) {
 
 // Arrows fly in a straight line. The Archer aims at where the rival will be when the arrow arrives,
 // with a small random spread, so a rival that speeds up, turns or bounces can still get out of the way.
-// A stun arrow is the exception: it tracks the rival all the way.
+// A stun arrow curves toward the rival for its first second, but only gently, so it can still miss.
 function fireArrow(f, c, o) {
-  c.shots++;
-  const stun = !f.demo && c.s('stun') > 0 && c.shots % STUN_EVERY[c.s('stun')] === 0;
+  const stun = !f.demo && c.s('stun') > 0 && f.rng() < STUN_CHANCE[c.s('stun')];
   const dist = Math.hypot(o.x - c.x, o.y - c.y), t = o.frozen > 0 || o.poolT > 0 ? 0 : dist / ARROW_SPEED;
   const tx = Math.max(o.r, Math.min(ARENA - o.r, o.x + o.vx * t)), ty = Math.max(o.r, Math.min(ARENA - o.r, o.y + o.vy * t));
-  const ang = stun ? c.aim : Math.atan2(ty - c.y, tx - c.x) + (f.rng() * 2 - 1) * ARROW_SPREAD;
-  f.arrows.push({ x: c.x + Math.cos(ang) * c.r, y: c.y + Math.sin(ang) * c.r, ang, homing: stun, stun, side: c.side });
+  const ang = Math.atan2(ty - c.y, tx - c.x) + (f.rng() * 2 - 1) * ARROW_SPREAD;
+  f.arrows.push({ x: c.x + Math.cos(ang) * c.r, y: c.y + Math.sin(ang) * c.r, ang, homeT: stun ? STUN_HOMING : 0, stun, side: c.side });
 }
 function abilities(f, c, o) {
   const dist = Math.hypot(o.x - c.x, o.y - c.y);
   c.aim = Math.atan2(o.y - c.y, o.x - c.x);
+  // Silenced: no attacks and no abilities. The Knight's swords keep turning but cut nothing.
+  if (c.silence > 0) { if (c.cls === 'knight') c.swordAng += swordSpin(c) * DT; return; }
   if (c.cls === 'knight') {
     // A Knight with a Vampire latched onto it cannot swing: the swords stop until the Vampire lets go.
     const bitten = o.latchT > 0;
@@ -326,7 +346,7 @@ function abilities(f, c, o) {
       if (segDist(o.x, o.y, c.x + ca * c.r, c.y + sa * c.r, c.x + ca * (c.r + len), c.y + sa * (c.r + len)) < o.r + w / 2) {
         c.swordCd[i] = 0.45;
         f.events.push({ type: 'slash', x: o.x - Math.cos(c.aim) * o.r, y: o.y - Math.sin(c.aim) * o.r });
-        attack(f, c, o, 1);
+        attack(f, c, o, SWORD_SHARE[n - 1]);
       }
     }
     // Great Cleave: one big swing when the rival is inside the hit zone, flinging it along the swing.
@@ -335,7 +355,7 @@ function abilities(f, c, o) {
       c.cleaveT = CLEAVE_CD[c.s('cleave')]; c.cleaveFx = 0.3; c.cleaveAng = c.aim;
       launch(o, c.aim + 1.1, 2.6);
       f.events.push({ type: 'text', x: o.x, y: o.y, text: 'CLEAVE' });
-      attack(f, c, o, CLEAVE_MULT, 'crit');
+      attack(f, c, o, CLEAVE_MULT[c.s('cleave')], 'crit');
     }
   } else if (c.cls === 'archer') {
     c.shootT -= DT;
@@ -356,16 +376,8 @@ function abilities(f, c, o) {
     c.grabT -= DT;
     if (c.s('grab') && c.grabT <= 0) {
       c.grabT = GRAB_CD[c.s('grab')];
-      // Aim a little ahead of where the rival is going.
-      const t = o.frozen > 0 ? 0 : dist / ROPE_SPEED;
-      const tx = Math.max(o.r, Math.min(ARENA - o.r, o.x + o.vx * t)), ty = Math.max(o.r, Math.min(ARENA - o.r, o.y + o.vy * t));
-      f.ropes.push({ side: c.side, ang: Math.atan2(ty - c.y, tx - c.x), len: c.r });
-    }
-    c.volleyT -= DT;
-    if (c.s('volley') && c.volleyT <= 0) {
-      c.volleyT = VOLLEY_CD[c.s('volley')];
-      const off = f.rng() * Math.PI / 4;
-      for (let i = 0; i < 8; i++) { const a = off + i * Math.PI / 4; f.thorns.push({ side: c.side, x: c.x + Math.cos(a) * c.r, y: c.y + Math.sin(a) * c.r, ang: a }); }
+      // Aim at where the rival will be when the rope arrives, bounces included.
+      f.ropes.push({ side: c.side, ang: leadAim(c, o, ROPE_SPEED), len: c.r });
     }
   } else if (c.cls === 'vampire') {
     if (c.s('bat') && c.batCd <= 0 && c.batT <= 0 && o.poolT <= 0) {
@@ -400,31 +412,51 @@ function stepFight(f) {
   const { a, b } = f;
   for (const c of [a, b]) {
     const o = c === a ? b : a;
-    c.shieldT -= DT; c.invuln -= DT; c.flash -= DT; c.rage -= DT; c.spikeCd -= DT; c.cleaveFx -= DT; c.latchCd -= DT; c.poolCd -= DT; c.batCd -= DT;
+    c.shieldT -= DT; c.invuln -= DT; c.flash -= DT; c.rage -= DT; c.spikeCd -= DT; c.cleaveFx -= DT; c.latchCd -= DT; c.batCd -= DT; c.silence -= DT; c.stunImmune -= DT; c.bareT -= DT;
+    if (c.s('thirst') && !f.demo) heal(c, REGEN[c.s('thirst')] * DT);
     if (c.poisonT > 0) { c.poisonT -= DT; if (!f.demo && c.invuln <= 0) c.hp -= c.poisonDps * DT; }
     if (!f.demo && f.t > SUDDEN_AT) c.hp -= (2 + (f.t - SUDDEN_AT) * 1.5) * DT;
     if (c.frozen > 0) { c.frozen -= DT; c.latchT = 0; c.batT = 0; continue; }
-    // Blood Pool: a puddle on the floor. Nothing can hurt it, it heals, and it cannot act.
-    if (c.poolT > 0) { c.poolT -= DT; c.invuln = Math.max(c.invuln, 2 * DT); heal(c, POOL_HEAL[c.s('pool')] / POOL_SECS * DT); continue; }
-    // The player presses a button for it. A rival uses it by itself once it is hurt.
-    if (c.s('pool') && c.poolCd <= 0 && c.hp > 0 && (c.side === 0 ? f.poolPress : c.hp < c.maxHp * 0.55)) {
-      c.poolT = POOL_SECS; c.poolCd = POOL_CD[c.s('pool')]; c.latchT = 0; c.batT = 0;
-      f.events.push({ type: 'text', x: c.x, y: c.y, text: 'BLOOD POOL' });
+    // Blood Pool: a puddle on the floor. Nothing can hurt it, it heals, it cannot act,
+    // and a rival that crosses it gets bitten once.
+    if (c.poolT > 0) {
+      c.poolT -= DT; c.invuln = Math.max(c.invuln, 2 * DT); heal(c, POOL_HEAL[c.s('pool')] / POOL_SECS * DT);
+      if (!c.poolHit && o.poolT <= 0 && Math.hypot(o.x - c.x, o.y - c.y) < c.r * 1.1 + o.r) {
+        c.poolHit = true; f.events.push({ type: 'slash', x: o.x, y: o.y }); drain(f, c, o, POOL_MULT[c.s('pool')]);
+      }
       continue;
     }
-    // Latched: the Vampire rides on the rival and bites 3 times before letting go.
-    if (c.latchT > 0 && (o.poolT > 0 || o.batT > 0)) c.latchT = 0;
+    // Active buttons: the player presses them. A rival uses its own when the moment looks right.
+    const act = ACTIVE[c.cls];
+    if (act && c.s(act) && !c.activeUsed && c.hp > 0 && c.silence <= 0 && (c.side === 0 ? f.activePress : rivalWants(f, c, o, act))) {
+      c.activeUsed = true;
+      if (act === 'pool') {
+        c.poolT = POOL_SECS; c.poolHit = false; c.latchT = 0; c.batT = 0;
+        f.events.push({ type: 'text', x: c.x, y: c.y, text: 'BLOOD POOL' });
+        continue;
+      }
+      // Spike Shot: every spike flies at where the rival is heading, then the Spike is bare until they grow back.
+      const aim = leadAim(c, o, SHOT_SPEED), spin = f.t * (c.side ? -1 : 1);
+      for (let i = 0; i < SHOT_SPIKES; i++) {
+        const a = i / SHOT_SPIKES * Math.PI * 2 + spin, sx = c.x + Math.cos(a) * (c.r + 6), sy = c.y + Math.sin(a) * (c.r + 6);
+        const tx = c.x + Math.cos(aim) * 1000, ty = c.y + Math.sin(aim) * 1000;
+        f.thorns.push({ side: c.side, x: sx, y: sy, ang: Math.atan2(ty - sy, tx - sx) + (f.rng() * 2 - 1) * 0.06, speed: SHOT_SPEED, mult: SHOT_MULT[c.s('spikeshot')] });
+      }
+      c.bareT = SHOT_BARE[c.s('spikeshot')];
+      f.events.push({ type: 'text', x: c.x, y: c.y, text: 'SPIKE SHOT' });
+    }
+    // Latched: the Vampire rides on the rival and bites before letting go.
+    if (c.latchT > 0 && (o.poolT > 0 || o.batT > 0 || c.silence > 0)) c.latchT = 0;
     if (c.latchT > 0) {
       c.latchT -= DT; c.biteT -= DT;
       c.x = Math.max(c.r, Math.min(ARENA - c.r, o.x + Math.cos(c.latchAng) * (o.r + c.r)));
       c.y = Math.max(c.r, Math.min(ARENA - c.r, o.y + Math.sin(c.latchAng) * (o.r + c.r)));
       if (c.biteT <= 0) {
-        c.biteT += LATCH_SECS / 3;
+        c.biteT += c.biteGap;
         f.events.push({ type: 'slash', x: o.x + Math.cos(c.latchAng) * o.r, y: o.y + Math.sin(c.latchAng) * o.r });
-        const dealt = drain(f, c, o, 1);
-        if (dealt > 0 && c.s('frenzy')) c.frenzy = Math.min(5, c.frenzy + 1);
+        drain(f, c, o, 1);
         // Biting a Spike hurts: its spikes prick the Vampire on every bite, at reduced damage.
-        if (o.cls === 'spike' && o.frozen <= 0) attack(f, o, c, SPIKE_PRICK);
+        if (spiky(o)) attack(f, o, c, SPIKE_PRICK);
       }
       if (c.latchT <= 0) { c.latchCd = LATCH_CD; launch(c, c.latchAng, 1.2); }
       continue;
@@ -442,7 +474,7 @@ function stepFight(f) {
       let turn = c.aim - ang; turn = Math.atan2(Math.sin(turn), Math.cos(turn));
       ang += Math.max(-5 * DT, Math.min(5 * DT, turn));
       sp = c.speed * 2.4;
-      if (!c.batHit && o.poolT <= 0 && Math.hypot(o.x - c.x, o.y - c.y) < c.r + o.r) { c.batHit = true; drain(f, c, o, BAT_MULT); }
+      if (!c.batHit && o.poolT <= 0 && Math.hypot(o.x - c.x, o.y - c.y) < c.r + o.r) { c.batHit = true; drain(f, c, o, BAT_MULT[c.s('bat')]); }
     } else sp += (c.speed - sp) * Math.min(1, 4 * DT); // ease back to cruising speed after a knock
     c.vx = Math.cos(ang) * sp; c.vy = Math.sin(ang) * sp;
     c.x += c.vx * DT; c.y += c.vy * DT;
@@ -453,7 +485,7 @@ function stepFight(f) {
     if (c.y > ARENA - c.r) { c.y = ARENA - c.r; c.vy = -Math.abs(c.vy); wall = true; }
     if (wall) {
       // Wall Stings: leave a sting where the Spike touched the wall. At most 5 at a time.
-      if (c.s('stings')) {
+      if (c.s('stings') && c.bareT <= 0) {
         f.stings.push({ side: c.side, x: c.x <= c.r + 0.01 ? 0 : (c.x >= ARENA - c.r - 0.01 ? ARENA : c.x), y: c.y <= c.r + 0.01 ? 0 : (c.y >= ARENA - c.r - 0.01 ? ARENA : c.y) });
         const mine = f.stings.filter(st => st.side === c.side);
         if (mine.length > 5) f.stings.splice(f.stings.indexOf(mine[0]), 1);
@@ -463,16 +495,23 @@ function stepFight(f) {
       c.vx = Math.cos(a2) * s2; c.vy = Math.sin(a2) * s2;
     }
   }
-  f.poolPress = false;
+  f.activePress = false;
   const out = p => p.x < 0 || p.x > ARENA || p.y < 0 || p.y > ARENA;
   for (const ar of f.arrows) {
     const tgt = ar.side === 0 ? b : a, own = ar.side === 0 ? a : b;
-    if (ar.homing) ar.ang = Math.atan2(tgt.y - ar.y, tgt.x - ar.x);
+    if (ar.homeT > 0) {
+      ar.homeT -= DT;
+      let turn = Math.atan2(tgt.y - ar.y, tgt.x - ar.x) - ar.ang; turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+      ar.ang += Math.max(-STUN_TURN * DT, Math.min(STUN_TURN * DT, turn));
+    }
     ar.x += Math.cos(ar.ang) * ARROW_SPEED * DT; ar.y += Math.sin(ar.ang) * ARROW_SPEED * DT;
     if (tgt.poolT <= 0 && Math.hypot(tgt.x - ar.x, tgt.y - ar.y) < tgt.r) {
       ar.done = true; f.arrowHits = (f.arrowHits || 0) + 1;
       const dealt = attack(f, own, tgt, 1, 'arrow');
-      if (dealt > 0 && ar.stun) { tgt.frozen = Math.max(tgt.frozen, STUN_SECS); f.events.push({ type: 'text', x: tgt.x, y: tgt.y, text: 'STUN' }); }
+      if (dealt > 0 && ar.stun && tgt.stunImmune <= 0) {
+        tgt.frozen = Math.max(tgt.frozen, STUN_SECS); tgt.stunImmune = STUN_SECS + STUN_IMMUNE;
+        f.events.push({ type: 'text', x: tgt.x, y: tgt.y, text: 'STUN' });
+      }
     } else if (out(ar)) {
       ar.done = true; f.arrowMisses = (f.arrowMisses || 0) + 1;
       if (!f.demo) f.events.push({ type: 'text', x: Math.max(50, Math.min(ARENA - 50, ar.x)), y: Math.max(70, Math.min(ARENA - 20, ar.y)), text: 'MISS', dim: true });
@@ -484,16 +523,17 @@ function stepFight(f) {
     const own = rp.side === 0 ? a : b, tgt = rp.side === 0 ? b : a;
     rp.len += ROPE_SPEED * DT;
     rp.x = own.x + Math.cos(rp.ang) * rp.len; rp.y = own.y + Math.sin(rp.ang) * rp.len;
-    if (tgt.poolT <= 0 && Math.hypot(tgt.x - rp.x, tgt.y - rp.y) < tgt.r + 8) {
+    if (tgt.poolT <= 0 && tgt.batT <= 0 && Math.hypot(tgt.x - rp.x, tgt.y - rp.y) < tgt.r + 14) {
       rp.done = true; launch(tgt, Math.atan2(own.y - tgt.y, own.x - tgt.x), 2.6);
-      f.events.push({ type: 'text', x: tgt.x, y: tgt.y, text: 'GRAB' });
+      tgt.silence = Math.max(tgt.silence, SILENCE[own.s('grab')]);
+      f.events.push({ type: 'text', x: tgt.x, y: tgt.y, text: 'SILENCED' });
     } else if (rp.len > 620 || out(rp)) rp.done = true;
   }
   f.ropes = f.ropes.filter(rp => !rp.done);
   for (const th of f.thorns) {
     const own = th.side === 0 ? a : b, tgt = th.side === 0 ? b : a;
-    th.x += Math.cos(th.ang) * 520 * DT; th.y += Math.sin(th.ang) * 520 * DT;
-    if (Math.hypot(tgt.x - th.x, tgt.y - th.y) < tgt.r + 6) { th.done = true; attack(f, own, tgt, VOLLEY_MULT); }
+    th.x += Math.cos(th.ang) * th.speed * DT; th.y += Math.sin(th.ang) * th.speed * DT;
+    if (tgt.poolT <= 0 && Math.hypot(tgt.x - th.x, tgt.y - th.y) < tgt.r + 6) { th.done = true; f.shotHits = (f.shotHits || 0) + 1; attack(f, own, tgt, th.mult); }
     else if (out(th)) th.done = true;
   }
   f.thorns = f.thorns.filter(th => !th.done);
@@ -532,15 +572,16 @@ function stepFight(f) {
       if (b.frozen <= 0) { b.vx += j / mb * nx; b.vy += j / mb * ny; }
       f.events.push({ type: 'bump', x: a.x + nx * a.r, y: a.y + ny * a.r });
       for (const [c, o] of [[a, b], [b, a]]) {
-        if (c.cls !== 'spike' || c.frozen > 0 || c.spikeCd > 0) continue;
+        if (!spiky(c) || c.spikeCd > 0) continue;
         c.spikeCd = 0.4;
         const dealt = attack(f, c, o, 1);
         if (dealt > 0 && c.s('poison')) { o.poisonDps = POISON[c.s('poison')]; o.poisonT = POISON_SECS; }
       }
     }
     for (const [c, o] of [[a, b], [b, a]]) {
-      if (f.demo || c.cls !== 'vampire' || c.frozen > 0 || c.latchCd > 0) continue;
-      c.latchT = LATCH_SECS; c.biteT = LATCH_SECS / 6; c.latchAng = Math.atan2(c.y - o.y, c.x - o.x);
+      if (f.demo || c.cls !== 'vampire' || c.frozen > 0 || c.silence > 0 || c.latchCd > 0) continue;
+      const n = BITES[c.s('longbite')];
+      c.biteGap = LATCH_SECS / 3; c.latchT = c.biteGap * n; c.biteT = c.biteGap / 2; c.latchAng = Math.atan2(c.y - o.y, c.x - o.x);
     }
   }
   if (a.hp <= 0 || b.hp <= 0) {
@@ -552,11 +593,19 @@ function stepFight(f) {
   }
 }
 
+// A Spike only hurts on contact while it has spikes and is free to act.
+function spiky(c) { return c.cls === 'spike' && c.frozen <= 0 && c.silence <= 0 && c.bareT <= 0; }
+// When a rival presses its own button: Blood Pool once it is hurt, Spike Shot once there is room to aim.
+function rivalWants(f, c, o, act) {
+  if (act === 'pool') return c.hp < c.maxHp * 0.55;
+  return f.t > 3 && Math.hypot(o.x - c.x, o.y - c.y) > 220 && o.poolT <= 0 && o.batT <= 0;
+}
+
 function addTrait(build, id) { const n = { ...build }; n[id] = (n[id] || 0) + 1; return n; }
 // Traits a circle can still take: its class's own, not maxed, and only upgrades once it holds 3.
 function openTraits(cls, build, forRival) {
   const full = Object.keys(build).length >= MAX_TRAITS;
-  return CLASSES[cls].traits.filter(id => (build[id] || 0) < MAX_LEVEL && (!full || build[id]) && !(forRival && FX[id].playerOnly));
+  return CLASSES[cls].traits.filter(id => (build[id] || 0) < maxLv(id) && (!full || build[id]) && !(forRival && FX[id].playerOnly));
 }
 function sample(list, n, rand) { const pool = list.slice(), out = []; while (out.length < n && pool.length) out.push(pool.splice(Math.floor(rand() * pool.length), 1)[0]); return out; }
 function rollChoices(cls, build, rand) { return sample(openTraits(cls, build, false), 3, rand); }
@@ -612,32 +661,32 @@ function showOverlay(html, cls) { overlay.className = 'overlay' + (cls ? ' ' + c
 // English text lives with the game data above. This table holds the Chinese for the same ids, plus all interface text in both languages.
 const ZH = {
   classes: {
-    knight:  { name: '骑士',   ability: '一把剑绕着骑士旋转，碰到对手就造成伤害。单次伤害为低到中等。' },
+    knight:  { name: '骑士',   ability: '一把剑绕着骑士旋转，碰到对手就造成伤害。皮糙肉厚，伤害中等。' },
     archer:  { name: '弓箭手', ability: '每 5 秒沿直线射出一支箭，瞄准对手前进的方向。伤害为中到高。' },
     spike:   { name: '尖刺',   ability: '全身长满尖刺，每次与对手碰撞都会造成伤害。' },
     vampire: { name: '吸血鬼', ability: '碰到对手后咬住不放，在 2 秒内撕咬 3 次，并按造成伤害的 30% 回复生命。被咬住的骑士无法挥剑。' },
   },
   fx: {
-    swords:   { name: '双剑',     desc: s => `携带 ${s + 1} 把剑。` },
+    swords:   { name: '双剑',     desc: s => `携带 ${s + 1} 把剑，每把造成 ${Math.round(SWORD_SHARE[s] * 100)}% 伤害。` },
     spin:     { name: '疾风剑刃', desc: s => `剑的旋转速度提高 ${40 * s}%。` },
     shield:   { name: '护盾',     desc: s => `每 ${SHIELD_CD[s]} 秒抵挡一次伤害。` },
     reach:    { name: '巨剑',     desc: s => `剑变大 ${30 * s}%。` },
-    cleave:   { name: '回旋斩',   desc: s => `对手进入攻击范围时，挥出一把巨剑横扫该范围，造成 ${Math.round(CLEAVE_MULT * 100)}% 伤害，并把对手沿挥砍方向击飞。冷却 ${CLEAVE_CD[s]} 秒。` },
+    cleave:   { name: '回旋斩',   desc: s => `对手进入攻击范围时，挥出一把巨剑横扫该范围，造成 ${Math.round(CLEAVE_MULT[s] * 100)}% 伤害，并把对手沿挥砍方向击飞。冷却 ${CLEAVE_CD[s]} 秒。` },
     rapid:    { name: '速射',     desc: s => `每 ${SHOOT_EVERY[s]} 秒射一箭，原为 5 秒。` },
-    stun:     { name: '眩晕箭',   desc: s => `${['', '每第 3 支箭', '每第 2 支箭', '每一支箭'][s]}都是发光的眩晕箭：会追踪对手，必定命中，并使对手眩晕 ${STUN_SECS} 秒。` },
+    stun:     { name: '眩晕箭',   desc: s => `每支箭有 ${Math.round(STUN_CHANCE[s] * 100)}% 的几率是发光的眩晕箭：射出后的 ${STUN_HOMING} 秒内会转向对手，命中时使其眩晕 ${STUN_SECS} 秒。被眩晕的对手在 ${STUN_IMMUNE} 秒内不会再次被眩晕。` },
     kick:     { name: '踢击',     desc: s => `对手靠近时将其踢飞，造成 ${Math.round(KICK_MULT[s] * 100)}% 伤害。冷却 ${KICK_CD[s]} 秒。` },
     double:   { name: '连射',     desc: s => `每次射击有 ${Math.round(DOUBLE[s] * 100)}% 的几率再射出一支箭。` },
     control:  { name: '自由操控', desc: s => `用 WASD 或方向键操控你的圆球，也可以按住场地来引导方向。${s > 1 ? `速度 +${15 * (s - 1)}%。` : ''}` },
     poison:   { name: '毒刺',     desc: s => `碰撞会让对手中毒，在 ${POISON_SECS} 秒内每秒受到 ${POISON[s]} 点伤害。毒伤不受你的伤害属性和对手防御的影响。` },
-    grab:     { name: '钩索',     desc: s => `每 ${GRAB_CD[s]} 秒向对手射出一条绳索，命中后会把对手拉向你。` },
+    grab:     { name: '钩索',     desc: s => `每 ${GRAB_CD[s]} 秒向对手射出一条绳索。命中后会把对手拉向你，并使其沉默 ${SILENCE[s]} 秒：无法攻击，也无法使用技能。` },
     stings:   { name: '墙刺',     desc: s => `撞墙时会在墙上留下一根刺。对手碰到后受到 ${Math.round(STING_MULT[s] * 100)}% 伤害，这根刺随即消失。` },
     bulk:     { name: '壮硕',     desc: s => `体型变大 ${12 * s}%，生命上限 +${20 * s}。` },
-    volley:   { name: '荆棘齐射', desc: s => `每 ${VOLLEY_CD[s]} 秒向四面八方射出 8 根荆棘，每根造成 ${Math.round(VOLLEY_MULT * 100)}% 伤害。` },
-    thirst:   { name: '嗜血',     desc: s => `按造成伤害的 ${Math.round(LEECH[s] * 100)}% 回复生命，原为 30%。` },
-    bat:      { name: '蝙蝠形态', desc: s => `每 ${BAT_CD[s]} 秒变成蝙蝠冲向对手。冲刺期间不受伤害，穿过对手时造成 ${Math.round(BAT_MULT * 100)}% 伤害并回复生命。` },
+    spikeshot: { name: '尖刺齐射', desc: s => `按“尖刺齐射”按钮或空格键，把全身 ${SHOT_SPIKES} 根尖刺射向对手，每根造成 ${Math.round(SHOT_MULT[s] * 100)}% 伤害。每场战斗限一次。之后尖刺需要 ${SHOT_BARE[s]} 秒才能长回来，在此之前碰撞不造成伤害。` },
+    thirst:   { name: '嗜血',     desc: s => `按造成伤害的 ${Math.round(LEECH[s] * 100)}% 回复生命（原为 30%），并且每秒回复 ${REGEN[s]} 点生命。` },
+    bat:      { name: '蝙蝠形态', desc: s => `每 ${BAT_CD[s]} 秒变成蝙蝠冲向对手。冲刺期间不受伤害，穿过对手时造成 ${Math.round(BAT_MULT[s] * 100)}% 伤害并回复生命。` },
     servants: { name: '血仆',     desc: s => `每 ${SERV_CD[s]} 秒召唤 2 个追击对手的小圆球。每个造成 ${Math.round(SERV_MULT * 100)}% 伤害并为你回复生命，碰到对手后消失。` },
-    pool:     { name: '血池',     desc: s => `按“血池”按钮或空格键，化作一滩血，持续 ${POOL_SECS} 秒。期间不受伤害，并回复 ${POOL_HEAL[s]} 点生命。冷却 ${POOL_CD[s]} 秒。` },
-    frenzy:   { name: '血之狂热', desc: s => `每次撕咬命中，本场战斗的伤害 +${Math.round(FRENZY[s] * 100)}%，最多叠加 5 次。` },
+    pool:     { name: '血池',     desc: s => `按“血池”按钮或空格键，化作一滩血，持续 ${POOL_SECS} 秒。期间不受伤害，回复 ${POOL_HEAL[s]} 点生命；对手经过血池时受到 ${Math.round(POOL_MULT[s] * 100)}% 伤害。每场战斗限一次。` },
+    longbite: { name: '持久撕咬', desc: s => `每次咬住对手时撕咬 ${BITES[s]} 次，原为 3 次。` },
   },
   tools: {
     medkit:  { name: '急救包', desc: '回复 30 点生命。' },
@@ -654,13 +703,13 @@ const ZH = {
     shop:   { name: '商店',   reward: () => '没有战斗。用金币购买特性和道具。' },
   },
   stats: { hp: '生命上限', dmg: '伤害', def: '防御', spd: '速度' },
-  floats: { 'BLOCK': '格挡', 'CLEAVE': '回旋斩', 'KICK': '踢击', 'STUN': '眩晕', 'GRAB': '钩住', 'MISS': '未命中', 'BAT FORM': '蝙蝠形态', 'BLOOD POOL': '血池', 'RAGE': '狂怒', 'FROZEN': '冰冻', 'BARRIER': '屏障' },
+  floats: { 'BLOCK': '格挡', 'CLEAVE': '回旋斩', 'KICK': '踢击', 'STUN': '眩晕', 'GRAB': '钩住', 'MISS': '未命中', 'BAT FORM': '蝙蝠形态', 'BLOOD POOL': '血池', 'SPIKE SHOT': '尖刺齐射', 'SILENCED': '沉默', 'RAGE': '狂怒', 'FROZEN': '冰冻', 'BARRIER': '屏障' },
 };
 const UI = {
   en: {
     brand: 'Circle <span>Brawl</span>', logo: 'Circle<br><span>Brawl</span>', langBtn: '中文', arena: 'Arena where the two circles fight',
     stage: 'Stage', coins: 'Coins', best: 'Best', speed: 'Fight speed', newRun: 'New run', yourCircle: 'Your circle', rivalCircle: 'Rival circle',
-    rules: "Circles bounce freely and bumping into each other does no damage. Only a class ability hurts: the Knight's swords, the Archer's arrows, the Spike's spikes or the Vampire's bite. Defense is the share of each hit that is blocked. A circle holds up to 3 of its class's traits, each with 3 levels. Tap a tool during a fight to use it. Every win pays 10 coins. After 45 seconds sudden death begins. Lose once and the run ends.",
+    rules: 'Pick a circle. Stack upgrades. Then sit back and watch the chaos. One loss ends your run, so build smart.',
     you: 'You', rival: 'Rival', tag: (who, cls) => `${who} · ${cls}`, hp: 'HP', damage: 'Damage', defense: 'Defense', speedStat: 'Speed',
     tools: 'Tools', noTools: 'None. Win an Armory fight or visit a Shop.', slots: (n, m) => `${n}/${m} traits`,
     noTraitsYet: 'No traits yet.', noTraits: 'No traits.', pressPlay: 'Press Play and choose a Knight, an Archer, a Spike or a Vampire.',
@@ -672,14 +721,14 @@ const UI = {
     routeTitle: 'Choose your route', coinsLine: n => `You have ${n} coins.`, foe: (cls, phrase) => `vs ${cls} ${phrase}`,
     shop: 'Shop', traitsH: 'Traits', toolsH: 'Tools', sold: 'Sold', price: n => `${n} coins`, leave: 'Leave shop',
     stageTitle: (n, name) => `Stage ${n}: ${name}`, face: (id, cls, phrase) => `You face ${id === 'archer' ? 'an' : 'a'} ${cls} ${phrase}.`,
-    steerHint: 'Steer with WASD or the arrow keys, or hold on the arena.', poolHint: 'Press the Blood Pool button or Space to turn into a pool.', fight: 'Fight',
+    steerHint: 'Steer with WASD or the arrow keys, or hold on the arena.', activeHint: n => `Press the ${n} button or Space to use it. Once per fight.`, fight: 'Fight',
     koTitle: n => `Knocked out at stage ${n}`, koSub: (f, best) => `You won ${f} fight${f === 1 ? '' : 's'} this run. Best run: ${best}.`, again: 'Play again',
-    pool: 'Blood Pool', poolActive: 'Blood Pool: active', poolCd: n => `Blood Pool: ${n}s`, poolReady: 'Blood Pool: ready', sudden: 'SUDDEN DEATH',
+    activeReady: n => `${n}: ready`, activeOn: n => `${n}: active`, activeDone: n => `${n}: used`, sudden: 'SUDDEN DEATH',
   },
   zh: {
     brand: '圆球<span>乱斗</span>', logo: '圆球<br><span>乱斗</span>', langBtn: 'English', arena: '两个圆球对战的场地',
     stage: '关卡', coins: '金币', best: '最佳', speed: '战斗速度', newRun: '重新开始', yourCircle: '你的圆球', rivalCircle: '对手的圆球',
-    rules: '圆球自由弹跳，互相碰撞本身不造成伤害。只有职业技能才会造成伤害：骑士的剑、弓箭手的箭、尖刺的刺和吸血鬼的撕咬。防御是每次受击被抵挡的比例。每个圆球最多掌握本职业的 3 个特性，每个特性有 3 级。战斗中点击道具即可使用。每场胜利获得 10 金币。45 秒后进入决胜阶段。输一场，本轮游戏就结束。',
+    rules: '选一个圆球，叠加升级，然后坐看混战。输一场就出局，升级要选好。',
     you: '你', rival: '对手', tag: (who, cls) => `${who} · ${cls}`, hp: '生命', damage: '伤害', defense: '防御', speedStat: '速度',
     tools: '道具', noTools: '暂无。赢下军械库的战斗，或去商店购买。', slots: (n, m) => `${n}/${m} 个特性`,
     noTraitsYet: '还没有特性。', noTraits: '没有特性。', pressPlay: '点击“开始游戏”，选择骑士、弓箭手、尖刺或吸血鬼。',
@@ -691,9 +740,9 @@ const UI = {
     routeTitle: '选择路线', coinsLine: n => `你有 ${n} 金币。`, foe: (cls, phrase) => `对手：${cls}，${phrase}`,
     shop: '商店', traitsH: '特性', toolsH: '道具', sold: '已售出', price: n => `${n} 金币`, leave: '离开商店',
     stageTitle: (n, name) => `第 ${n} 关：${name}`, face: (id, cls, phrase) => `你的对手是${cls}，${phrase}。`,
-    steerHint: '用 WASD 或方向键操控，也可以按住场地。', poolHint: '按“血池”按钮或空格键化作血池。', fight: '开战',
+    steerHint: '用 WASD 或方向键操控，也可以按住场地。', activeHint: n => `按“${n}”按钮或空格键使用，每场战斗限一次。`, fight: '开战',
     koTitle: n => `在第 ${n} 关被击败`, koSub: (f, best) => `本轮你赢了 ${f} 场战斗。最佳纪录：${best}。`, again: '再来一局',
-    pool: '血池', poolActive: '血池：生效中', poolCd: n => `血池：${n} 秒`, poolReady: '血池：就绪', sudden: '决胜阶段',
+    activeReady: n => `${n}：就绪`, activeOn: n => `${n}：生效中`, activeDone: n => `${n}：已使用`, sudden: '决胜阶段',
   },
 };
 function loadLang() { try { const v = localStorage.getItem('circleBrawlLang'); if (v === 'en' || v === 'zh') return v; } catch (e) {} return 'en'; }
@@ -762,19 +811,22 @@ function sheet(spec, emptyText) {
 function renderTools() {
   const ids = TOOL_IDS.filter(id => G.tools && G.tools[id] > 0);
   const live = G.phase === 'fight' && fight && !fight.over;
-  const pool = G.build && G.build.pool ? `<button class="chip tool" id="poolBtn" disabled>${t('pool')}</button>` : '';
-  $('tools').innerHTML = pool + `<span>${t('tools')}</span>` + (ids.length
+  const act = activeOf(G.build);
+  const actBtn = act ? `<button class="chip tool" id="activeBtn" disabled>${fxName(act)}</button>` : '';
+  $('tools').innerHTML = actBtn + `<span>${t('tools')}</span>` + (ids.length
     ? ids.map(id => `<button class="chip tool" data-tool="${id}" title="${toolDesc(id)}" ${live ? '' : 'disabled'}>${toolName(id)} ×${G.tools[id]}</button>`).join('')
     : `<span>${t('noTools')}</span>`);
-  updatePoolBtn();
+  updateActiveBtn();
 }
-// The Blood Pool button shows its cooldown and only works during a fight.
-function updatePoolBtn() {
-  const btn = $('poolBtn'); if (!btn) return;
+// The active button (Blood Pool or Spike Shot) shows whether it is ready, running or spent.
+function activeOf(build) { return build && G.cls && ACTIVE[G.cls] && build[ACTIVE[G.cls]] ? ACTIVE[G.cls] : null; }
+function updateActiveBtn() {
+  const btn = $('activeBtn'); if (!btn) return;
+  const act = activeOf(G.build), name = fxName(act);
   const live = G.phase === 'fight' && fight && !fight.over, c = fight && fight.a;
-  const label = !live ? t('pool') : c.poolT > 0 ? t('poolActive') : c.poolCd > 0 ? t('poolCd', Math.ceil(c.poolCd)) : t('poolReady');
+  const label = !live ? name : c.poolT > 0 ? t('activeOn', name) : c.activeUsed ? t('activeDone', name) : t('activeReady', name);
   if (btn.textContent !== label) btn.textContent = label;
-  btn.disabled = !(live && c.poolT <= 0 && c.poolCd <= 0);
+  btn.disabled = !(live && !c.activeUsed && c.silence <= 0 && c.frozen <= 0);
 }
 function renderHud() {
   const inRun = !!G.cls;
@@ -850,7 +902,7 @@ function showShop() {
   const s = G.shop, open = openTraits(G.cls, G.build, false);
   const tc = s.traits.map(id => {
     const have = G.build[id] || 0, price = traitPrice(have), sold = s.sold.includes(id) || !open.includes(id);
-    return `<button class="card" data-buytrait="${id}" ${sold || G.coins < price ? 'disabled' : ''}><span class="name">${fxName(id)}</span>${have ? `<span class="lvl">${t('level', have, Math.min(MAX_LEVEL, have + 1))}</span>` : ''}<span class="desc">${fxDesc(id, Math.min(MAX_LEVEL, have + 1))}</span><span class="price">${sold ? t('sold') : t('price', price)}</span></button>`;
+    return `<button class="card" data-buytrait="${id}" ${sold || G.coins < price ? 'disabled' : ''}><span class="name">${fxName(id)}</span>${have ? `<span class="lvl">${t('level', have, Math.min(maxLv(id), have + 1))}</span>` : ''}<span class="desc">${fxDesc(id, Math.min(maxLv(id), have + 1))}</span><span class="price">${sold ? t('sold') : t('price', price)}</span></button>`;
   }).join('');
   const oc = s.tools.map(id => `<button class="card" data-buytool="${id}" ${G.coins < TOOLS[id].price ? 'disabled' : ''}><span class="name">${toolName(id)}</span><span class="desc">${toolDesc(id)}</span><span class="price">${t('price', TOOLS[id].price)}</span></button>`).join('');
   showOverlay(`<h2>${t('shop')}</h2><p>${t('coinsLine', G.coins)}</p>${tc ? `<h4>${t('traitsH')}</h4><div class="cards">${tc}</div>` : ''}<h4>${t('toolsH')}</h4><div class="cards">${oc}</div><button class="big" id="leave">${t('leave')}</button>`);
@@ -859,7 +911,7 @@ function showReady() {
   G.phase = 'ready';
   previewFight(); renderHud();
   const rv = G.node.rival;
-  showOverlay(`<h2>${t('stageTitle', G.stage, routeName(G.node.type))}</h2><p>${t('face', rv.cls, cName(rv.cls), traitPhrase(rv.traits))}</p>${G.build.control ? `<p>${t('steerHint')}</p>` : ''}${G.build.pool ? `<p>${t('poolHint')}</p>` : ''}<button class="big" id="go">${t('fight')}</button>`);
+  showOverlay(`<h2>${t('stageTitle', G.stage, routeName(G.node.type))}</h2><p>${t('face', rv.cls, cName(rv.cls), traitPhrase(rv.traits))}</p>${G.build.control ? `<p>${t('steerHint')}</p>` : ''}${activeOf(G.build) ? `<p>${t('activeHint', fxName(activeOf(G.build)))}</p>` : ''}<button class="big" id="go">${t('fight')}</button>`);
   $('go').focus();
 }
 function startFight() {
@@ -900,7 +952,7 @@ overlay.addEventListener('click', e => {
   else if (b.id === 'go') startFight();
 });
 $('tools').addEventListener('click', e => {
-  if (e.target.id === 'poolBtn' && G.phase === 'fight' && fight && !fight.over) { fight.poolPress = true; return; }
+  if (e.target.id === 'activeBtn' && G.phase === 'fight' && fight && !fight.over) { fight.activePress = true; return; }
   const b = e.target.closest('[data-tool]'); if (!b || G.phase !== 'fight' || !fight || fight.over) return;
   const id = b.dataset.tool;
   if (G.tools[id] > 0 && useTool(fight, id)) { G.tools[id]--; renderTools(); }
@@ -914,7 +966,7 @@ document.querySelectorAll('[data-speed]').forEach(btn => btn.addEventListener('c
 // Steering input for Free Rein: keys, or holding a point on the arena.
 const KEYMAP = { w: [0, -1], arrowup: [0, -1], s: [0, 1], arrowdown: [0, 1], a: [-1, 0], arrowleft: [-1, 0], d: [1, 0], arrowright: [1, 0] };
 window.addEventListener('keydown', e => { const k = e.key.toLowerCase();
-  if (e.key === ' ' && G.phase === 'fight' && G.build.pool && fight && !fight.over) { fight.poolPress = true; e.preventDefault(); return; } if (KEYMAP[k]) { keys[k] = true; if (G.phase === 'fight' && G.build.control) e.preventDefault(); } });
+  if (e.key === ' ' && G.phase === 'fight' && activeOf(G.build) && fight && !fight.over) { fight.activePress = true; e.preventDefault(); return; } if (KEYMAP[k]) { keys[k] = true; if (G.phase === 'fight' && G.build.control) e.preventDefault(); } });
 window.addEventListener('keyup', e => { delete keys[e.key.toLowerCase()]; });
 window.addEventListener('blur', () => { for (const k in keys) delete keys[k]; pointer = null; });
 function pointAt(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * ARENA, y: (e.clientY - r.top) / r.height * ARENA }; }
@@ -1014,12 +1066,14 @@ function drawCircle(c, color) {
     ctx.strokeStyle = c.rage > 0 ? COL.gold : COL.ink; ctx.lineWidth = 5;
     ctx.beginPath(); ctx.arc(c.x, c.y, c.r + 10, c.aim - 0.55, c.aim + 0.55); ctx.stroke();
   } else if (c.cls === 'spike') {
-    const n = 16; ctx.fillStyle = c.rage > 0 ? COL.gold : COL.ink;
-    for (let i = 0; i < n; i++) {
+    // After a Spike Shot the spikes are gone, then grow back over the last 1.5 seconds.
+    const n = SHOT_SPIKES, grow = c.bareT > 0 ? Math.max(0, 1 - c.bareT / 1.5) : 1;
+    ctx.fillStyle = c.rage > 0 ? COL.gold : COL.ink;
+    for (let i = 0; grow > 0 && i < n; i++) {
       const a = i / n * Math.PI * 2 + fight.t * (c.side ? -1 : 1);
       ctx.beginPath();
       ctx.moveTo(c.x + Math.cos(a - 0.13) * c.r, c.y + Math.sin(a - 0.13) * c.r);
-      ctx.lineTo(c.x + Math.cos(a) * (c.r + 13), c.y + Math.sin(a) * (c.r + 13));
+      ctx.lineTo(c.x + Math.cos(a) * (c.r + 13 * grow), c.y + Math.sin(a) * (c.r + 13 * grow));
       ctx.lineTo(c.x + Math.cos(a + 0.13) * c.r, c.y + Math.sin(a + 0.13) * c.r);
       ctx.fill();
     }
@@ -1030,6 +1084,7 @@ function drawCircle(c, color) {
   if (c.s('shield') && c.shieldT <= 0) ring(c, -8, COL.ink);
   if (c.poisonT > 0) ring(c, 18, COL.poison, [6, 6]);
   if (c.invuln > 0) ring(c, 16, COL.gold);
+  if (c.silence > 0) ring(c, 24, COL.muted, [3, 7]);
   if (!fight.demo) {
     ctx.fillStyle = COL.bg; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = `${Math.round(c.r * 0.6)}px Bungee, "Arial Black", sans-serif`;
@@ -1102,7 +1157,7 @@ function frame(now) {
       if (Math.round(fight.t / DT) % 3 === 0) for (const c of [fight.a, fight.b]) { const t = trails[c.side]; t.push({ x: c.x, y: c.y }); if (t.length > 10) t.shift(); }
     }
     drainEvents();
-    if (live) { renderBars(); updatePoolBtn(); if (fight.over) endFight(); }
+    if (live) { renderBars(); updateActiveBtn(); if (fight.over) endFight(); }
   }
   if (fight) draw(dt);
   requestAnimationFrame(frame);
@@ -1112,6 +1167,12 @@ function start(saved) {
   applyStatic();
   if (saved && saved.cls && saved.node && saved.node.rival && saved.node.rival.cls && saved.phase !== 'over' && saved.phase !== 'ko') {
     G = saved; G.best = Math.max(G.best || 0, loadBest()); G.tools = G.tools || {};
+    // A run saved before a trait was removed or capped drops or trims it.
+    const clean = b => { for (const id in b) { if (!FX[id]) delete b[id]; else b[id] = Math.min(b[id], maxLv(id)); } return b; };
+    clean(G.build); clean(G.node.rival.traits);
+    if (G.routes) G.routes.forEach(r => r.rival && clean(r.rival.traits));
+    if (G.choices) G.choices = G.choices.filter(id => FX[id]);
+    if (G.shop) G.shop.traits = G.shop.traits.filter(id => FX[id]);
     previewFight(); renderHud();
     if (G.phase === 'pick') showPick(true);
     else if (G.phase === 'toolpick') showToolPick(true);
