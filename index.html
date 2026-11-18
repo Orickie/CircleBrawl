@@ -22,6 +22,7 @@
   --you: #ff6b4a;
   --rival: #36d6c3;
   --gold: #ffd23f;
+  --good: #9be564;
   --display: "Bungee", "Arial Black", Impact, sans-serif;
   --body: "Chakra Petch", "Trebuchet MS", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
 }
@@ -95,6 +96,24 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .stats b { color: var(--ink); font-weight: 600; }
 .card .stats { grid-template-columns: 1fr; margin: 4px 0; }
 .rules { font-size: 14px; color: var(--muted); margin: 0; }
+.cards.one { grid-template-columns: minmax(0, 320px); justify-content: center; }
+.card.boss { border-color: var(--you); }
+.card.boss .name { color: var(--you); }
+.good { color: var(--good); }
+.bad { color: var(--you); }
+.card .desc.good, .card .desc.bad { font-weight: 600; }
+.card .desc.good { color: var(--good); }
+.card .desc.bad { color: var(--you); }
+.btnrow { display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap; }
+.build h5 { font-family: var(--display); font-weight: 400; font-size: 12px; color: var(--muted); margin: 10px 0 0; }
+.build li.good, .build li.bad { font-weight: 600; }
+.wheel { position: relative; width: min(260px, 62%); aspect-ratio: 1; margin: 4px auto; }
+.wheel .disc { width: 100%; height: 100%; }
+.wheel .disc svg { width: 100%; height: 100%; display: block; }
+.wheel .pointer { position: absolute; left: 50%; top: -6px; transform: translateX(-50%); width: 0; height: 0; border-left: 12px solid transparent; border-right: 12px solid transparent; border-top: 22px solid var(--gold); z-index: 1; filter: drop-shadow(0 2px 0 var(--bg)); }
+.overlay .result { font-family: var(--display); font-size: 17px; color: var(--ink); }
+.overlay .result.good { color: var(--good); }
+.overlay .result.bad { color: var(--you); }
 
 @media (max-width: 460px) {
   .cards, .cards.two { grid-template-columns: 1fr; gap: 8px; }
@@ -159,17 +178,24 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 <script>
 //<sim>
 // ---------- Simulation: no DOM in this block, so it can run headless for balance tests ----------
-const ARENA = 600, DT = 1 / 120, SUDDEN_AT = 45, RADIUS = 56, MAX_TRAITS = 3, MAX_LEVEL = 3;
+const ARENA = 600, BIG_ARENA = 800, DT = 1 / 120, SUDDEN_AT = 45, BOSS_SUDDEN_AT = 90, RADIUS = 56, MAX_TRAITS = 3, MAX_LEVEL = 3;
 const SWORD_LEN = 85, CLEAVE_ZONE = 120, ROPE_SPEED = 1500;
 const SWORD_SHARE = [1, 0.6, 0.45], SHIELD_CD = [0, 8, 6, 4], CLEAVE_CD = [0, 7, 6, 5], CLEAVE_MULT = [0, 1.2, 1.5, 1.8];
+const CHARGE_CD = [0, 10, 8, 6], CHARGE_PACE = 0.75, CHARGE_MAX = 4;
 const SHOOT_EVERY = [5, 4, 3.2, 2.5], ARROW_SPEED = 900, ARROW_SPREAD = 0.3, KICK_CD = [0, 5, 4, 3], KICK_MULT = [0, 0.6, 0.8, 1], DOUBLE = [0, 0.2, 0.35, 0.5];
 const STUN_CHANCE = [0, 0.2, 0.3, 0.4], STUN_SECS = 1.2, STUN_IMMUNE = 3, STUN_HOMING = 1, STUN_TURN = 2.5;
+const VOLLEY_ARROWS = [0, 5, 6, 7], VOLLEY_ARC = 0.9, VOLLEY_FIRST = [0, 0.4, 0.5, 0.6], VOLLEY_REPEAT = 0.1, VOLLEY_USES = 2;
 const POISON = [0, 3.5, 4.5, 5.5], POISON_SECS = 4, GRAB_CD = [0, 5, 4.5, 4], SILENCE = [0, 1, 1.2, 1.4], STING_MULT = [0, 0.6, 0.9, 1.2];
 const SHOT_MULT = [0, 0.25, 0.32, 0.35], SHOT_BARE = [0, 7, 6, 5], SHOT_SPIKES = 16, SHOT_SPEED = 650;
 const LATCH_SECS = 2, LATCH_CD = 4.5, BITES = [3, 4, 5], LEECH = [0.3, 0.5, 0.65, 0.8], SPIKE_PRICK = 0.15, BAT_CD = [0, 8, 6.5, 5], BAT_SECS = 0.9, BAT_MULT = [0, 1, 1.3, 1.6], REGEN = [0, 1, 2, 3];
 const SERV_CD = [0, 8, 6.5, 5], SERV_MULT = 0.6, SERV_R = 14, POOL_HEAL = [0, 20, 30, 40], POOL_SECS = 2.5, POOL_MULT = [0, 1.5, 2, 2.5];
-// The two buttons you press yourself. Each works once per fight.
-const ACTIVE = { vampire: 'pool', spike: 'spikeshot' };
+// Bosses
+const SLIME_R = [95, 62, 40], SLIME_HP = [1, 0.4, 0.18], SLIME_DMG = [1, 0.4, 0.15], SLIME_SPD = [1, 1.35, 1.7], SLIME_MASS = [3, 1.6, 1];
+const WALL_R = 90, SHURIKEN_ORBIT = 95, SHURIKEN_R = 26, SHURIKEN_SPIN = 0.8, WAVE_EVERY = 8, WAVE_SPEED = 320, WAVE_MULT = 1.3;
+// The button each class can press itself, and how often it works in one fight.
+const ACTIVE = { knight: 'charge', archer: 'arc', spike: 'spikeshot', vampire: 'pool' };
+const ACTIVE_USES = { pool: () => 1, spikeshot: () => 1, arc: () => VOLLEY_USES, charge: () => Infinity };
+const ACTIVE_GAP = { pool: () => 0, spikeshot: () => 0, arc: () => 2.5, charge: s => CHARGE_CD[s] };
 
 function mulberry32(a) {
   return function () {
@@ -185,12 +211,12 @@ const CLASSES = {
   knight: {
     name: 'Knight', ability: 'A sword circles the Knight and cuts the rival on contact. Tough, with moderate damage.',
     base: { hp: 110, dmg: 14, def: 30, spd: 34 }, up: { hp: 15, dmg: 3, def: 5, spd: 3 },
-    traits: ['swords', 'spin', 'shield', 'reach', 'cleave'],
+    traits: ['swords', 'spin', 'shield', 'reach', 'cleave', 'charge'],
   },
   archer: {
     name: 'Archer', ability: 'Shoots an arrow in a straight line every 5 seconds, aimed at where the rival is heading. Medium to high damage.',
     base: { hp: 100, dmg: 33, def: 5, spd: 44 }, up: { hp: 15, dmg: 5, def: 5, spd: 3 },
-    traits: ['rapid', 'stun', 'kick', 'double', 'control'],
+    traits: ['rapid', 'stun', 'kick', 'double', 'control', 'arc'],
   },
   spike: {
     name: 'Spike', ability: 'Covered in spikes. Deals damage every time it collides with the rival.',
@@ -205,20 +231,27 @@ const CLASSES = {
 };
 const CLASS_IDS = Object.keys(CLASSES);
 const STAT_NAMES = { hp: 'Max HP', dmg: 'Damage', def: 'Defense', spd: 'Speed' };
+const BOSSES = {
+  slime: { name: 'Slime King', ability: 'A giant, slow slime that hurts on contact. When it falls it splits into 3 smaller, faster slimes, and each of those splits once more.' },
+  wall:  { name: 'Great Wall', ability: 'A fortress in the middle of a bigger arena. A shuriken circles it, and every 8 seconds a shock wave sweeps the whole arena, hurting you and knocking you away.' },
+};
+const BOSS_IDS = Object.keys(BOSSES);
 
 const FX = {
   // Knight
   swords:  { name: 'Twin Swords',  desc: s => `Carry ${s + 1} swords, each dealing ${Math.round(SWORD_SHARE[s] * 100)}% damage.`, max: 2 },
-  spin:    { name: 'Swift Blades', desc: s => `Swords spin ${40 * s}% faster.` },
+  spin:    { name: 'Swift Blades', desc: s => `Swords spin ${40 * s}% faster. Can't be taken with Great Sword.`, excludes: 'reach' },
   shield:  { name: 'Shield',       desc: s => `Blocks one hit every ${SHIELD_CD[s]} seconds.` },
-  reach:   { name: 'Great Sword',  desc: s => `Swords are ${30 * s}% bigger.` },
+  reach:   { name: 'Great Sword',  desc: s => `Swords are ${30 * s}% bigger. Can't be taken with Swift Blades.`, excludes: 'spin' },
   cleave:  { name: 'Great Cleave', desc: s => `When the rival enters your hit zone, a huge sword sweeps through it for ${Math.round(CLEAVE_MULT[s] * 100)}% damage and flings the rival along the swing. ${CLEAVE_CD[s]} second cooldown.` },
+  charge:  { name: 'Charge',       desc: s => `Press the Charge button or Space to march straight at the rival. You take no damage until you reach it. ${chargeRule(s)}`, active: true },
   // Archer
   rapid:   { name: 'Rapid Fire',   desc: s => `Shoot every ${SHOOT_EVERY[s]} seconds instead of 5.` },
   stun:    { name: 'Stun Arrow',   desc: s => `Each arrow has a ${Math.round(STUN_CHANCE[s] * 100)}% chance to be a glowing stun arrow. It curves toward the rival for ${STUN_HOMING} second and stuns for ${STUN_SECS} seconds. A stunned rival can't be stunned again for ${STUN_IMMUNE} seconds.` },
   kick:    { name: 'Kick',         desc: s => `When the rival gets close, kick it away for ${Math.round(KICK_MULT[s] * 100)}% damage. ${KICK_CD[s]} second cooldown.` },
   double:  { name: 'Double Shot',  desc: s => `Each shot has a ${Math.round(DOUBLE[s] * 100)}% chance to fire a second arrow.` },
   control: { name: 'Free Rein',    desc: s => `Steer your circle with WASD or the arrow keys, or by holding on the arena.${s > 1 ? ` +${15 * (s - 1)}% speed.` : ''}`, playerOnly: true },
+  arc:     { name: 'Volley',       desc: s => `Press the Volley button or Space to fire ${VOLLEY_ARROWS[s]} arrows in a wide arc. The first to hit a target deals ${Math.round(VOLLEY_FIRST[s] * 100)}% damage and the rest deal ${Math.round(VOLLEY_REPEAT * 100)}%. Each can be a stun arrow. ${VOLLEY_USES === 1 ? 'Once' : VOLLEY_USES + ' times'} per fight.`, active: true },
   // Spike
   poison:  { name: 'Poisonous Sting', desc: s => `Collisions poison the rival for ${POISON[s]} damage per second over ${POISON_SECS} seconds. Poison ignores your Damage stat and the rival's Defense.` },
   grab:    { name: 'Grab',            desc: s => `Every ${GRAB_CD[s]} seconds, shoot a rope at the rival. If it lands, the rival is yanked toward you and silenced for ${SILENCE[s]} seconds: no attacks and no abilities.` },
@@ -232,6 +265,7 @@ const FX = {
   pool:     { name: 'Blood Pool',     desc: s => `Press the Blood Pool button or Space to melt into a pool of blood for ${POOL_SECS} seconds. You take no damage and heal ${POOL_HEAL[s]} HP, and a rival that crosses the pool takes ${Math.round(POOL_MULT[s] * 100)}% damage. Once per fight.`, active: true },
   longbite: { name: 'Long Bite',      desc: s => `Bite ${BITES[s]} times each time you latch on, instead of 3.`, max: 2 },
 };
+function chargeRule(s) { return `${CHARGE_CD[s]} second cooldown.`; }
 // Most traits have 3 levels. A few stop sooner.
 function maxLv(id) { return FX[id].max || MAX_LEVEL; }
 
@@ -245,37 +279,76 @@ const TOOLS = {
 };
 const TOOL_IDS = Object.keys(TOOLS);
 
-// spec = { cls, stats: {hp, dmg, def, spd}, traits: {id: level} }
-function makeCircle(side, spec) {
-  const s = id => spec.traits[id] || 0, st = spec.stats, hp = Math.round(st.hp + 20 * s('bulk'));
-  return {
-    side, cls: spec.cls, s,
-    x: side === 0 ? 140 : 460, y: side === 0 ? 440 : 160, vx: 0, vy: 0, r: RADIUS * (1 + 0.12 * s('bulk')), mass: 1 + 0.25 * s('bulk'),
-    maxHp: hp, hp, dmg: st.dmg, def: st.def,
+// Sacrifice trades that change how a class's ability works. Multipliers stack over a run.
+const MOD_KEYS = ['swordSize', 'spin', 'arrowDmg', 'fireRate', 'contactDmg', 'poison', 'biteDmg', 'leech'];
+
+let NEXT_ID = 1;
+// spec = { cls, stats: {hp, dmg, def, spd}, traits: {id: level}, mods?, next?, gen? }
+function makeCircle(side, spec, W) {
+  const s = id => (spec.traits && spec.traits[id]) || 0, st = spec.stats, cls = spec.cls;
+  const slime = cls === 'slime', wall = cls === 'wall', gen = spec.gen || 0;
+  const hp = Math.round(st.hp + 20 * s('bulk'));
+  const act = ACTIVE[cls], m = { swordSize: 1, spin: 1, arrowDmg: 1, fireRate: 1, contactDmg: 1, poison: 1, biteDmg: 1, leech: 1, ...(spec.mods || {}) };
+  const c = {
+    id: NEXT_ID++, side, cls, s, m, gen, boss: slime || wall, fixed: wall,
+    x: wall ? W / 2 : side === 0 ? W * 0.23 : W * 0.77, y: wall ? W / 2 : side === 0 ? W * 0.73 : W * 0.27, vx: 0, vy: 0,
+    r: slime ? SLIME_R[gen] : wall ? WALL_R : RADIUS * (1 + 0.12 * s('bulk')),
+    mass: slime ? SLIME_MASS[gen] : wall ? 1e6 : 1 + 0.25 * s('bulk'),
+    maxHp: hp, hp, dmg: st.dmg, dmgMult: 1, def: st.def,
     speed: st.spd * 10 * (1 + 0.15 * Math.max(0, s('control') - 1)),
-    swordAng: side * Math.PI, swordCd: [0, 0, 0, 0], aim: 0, cleaveT: 2, cleaveFx: 0, cleaveAng: 0,
-    shootT: SHOOT_EVERY[s('rapid')] / 2, extraT: 0, kickT: 1,
-    spikeCd: 0, grabT: 2.5, poisonDps: 0, poisonT: 0, bareT: 0,
-    latchT: 0, latchCd: 0, biteT: 0, biteGap: LATCH_SECS / 3, latchAng: 0, batT: 0, batCd: 3, batHit: false, servT: 2, poolT: 0, poolHit: false,
-    activeUsed: false, silence: 0, stunImmune: 0, shieldT: 0, invuln: 0, frozen: 0, rage: 0, flash: 0,
+    cds: {}, swordAng: side * Math.PI, aim: 0, cleaveT: 2, cleaveFx: 0, cleaveAng: 0, chargeT: 0,
+    shootT: SHOOT_EVERY[s('rapid')] / 2 / m.fireRate, extraT: 0, kickT: 1,
+    grabT: 2.5, poisonDps: 0, poisonT: 0, bareT: 0,
+    latchT: 0, latchOn: null, latchCd: 0, biteT: 0, biteGap: LATCH_SECS / 3, latchAng: 0, batT: 0, batCd: 3, batHit: false, servT: 2, poolT: 0, poolHit: false,
+    uses: act && s(act) ? ACTIVE_USES[act](s(act)) : 0, activeCd: 0, waveT: WAVE_EVERY * 0.6,
+    silence: 0, stunImmune: 0, shieldT: 0, invuln: 0, frozen: 0, rage: 0, flash: 0,
   };
+  if (spec.next) { if (spec.next.dmg) c.dmgMult = spec.next.dmg; if (spec.next.hpFrac) c.hp = Math.max(1, Math.round(c.maxHp * spec.next.hpFrac)); }
+  return c;
 }
 function swordCount(c) { return c.cls === 'knight' ? 1 + c.s('swords') : 0; }
-function swordLen(c) { return SWORD_LEN * (1 + 0.3 * c.s('reach')); }
-function swordWidth(c) { return 14 * (1 + 0.3 * c.s('reach')); }
-function swordSpin(c) { return 4.6 * (1 + 0.4 * c.s('spin')); }
+function swordLen(c) { return SWORD_LEN * (1 + 0.3 * c.s('reach')) * c.m.swordSize; }
+function swordWidth(c) { return 14 * (1 + 0.3 * c.s('reach')) * c.m.swordSize; }
+function swordSpin(c) { return 4.6 * (1 + 0.4 * c.s('spin')) * c.m.spin; }
+
+// Bosses are not player classes. Their strength grows with the number of fights won.
+function makeBoss(kind, fights) {
+  const k = 1 + 0.05 * fights;
+  if (kind === 'slime') return { cls: 'slime', boss: 'slime', gen: 0, traits: {}, stats: { hp: Math.round(65 * k), dmg: 5.5 * k, def: 0, spd: 22 } };
+  return { cls: 'wall', boss: 'wall', traits: {}, stats: { hp: Math.round(250 * k), dmg: 5 * k, def: 10, spd: 0 } };
+}
 
 function createFight(you, rival, seed, demo) {
-  const rng = mulberry32(seed);
-  const f = { a: makeCircle(0, you), b: makeCircle(1, rival), arrows: [], ropes: [], thorns: [], stings: [], servants: [], activePress: false, t: 0, over: false, winner: -1, rng, events: [], demo: !!demo, input: null };
-  for (const c of [f.a, f.b]) {
+  const rng = mulberry32(seed), W = rival.cls === 'wall' ? BIG_ARENA : ARENA;
+  const f = { W, a: makeCircle(0, you, W), foes: [], arrows: [], ropes: [], thorns: [], stings: [], servants: [], waves: [], volleyHit: {}, volleys: 0,
+    activePress: false, t: 0, over: false, winner: -1, rng, events: [], demo: !!demo, input: null, suddenAt: rival.boss ? BOSS_SUDDEN_AT : SUDDEN_AT };
+  const b = makeCircle(1, rival, W);
+  f.foes.push(b); f.b = b;
+  // The whole slime family counts toward the boss's HP bar: 1 king, 3 middle slimes, 9 small ones.
+  f.foeTotal = b.maxHp; f.reserve = 0;
+  if (b.cls === 'slime') { const mid = Math.round(rival.stats.hp * SLIME_HP[1]) * 3, small = Math.round(rival.stats.hp * SLIME_HP[2]) * 9; f.reserve = mid + small; f.foeTotal += mid + small; f.slimeBase = rival.stats; }
+  for (const c of [f.a, b]) {
+    if (c.fixed) continue;
     const ang = (c.side === 0 ? -Math.PI / 4 : Math.PI * 3 / 4) + (rng() - 0.5) * 1.2;
     c.vx = Math.cos(ang) * c.speed; c.vy = Math.sin(ang) * c.speed;
   }
   return f;
 }
+// Current and full HP of everything on the rival's side, for the HP bar.
+function foeHealth(f) { return [f.foes.reduce((n, c) => n + Math.max(0, c.hp), 0) + f.reserve, f.foeTotal]; }
+function foesOf(f, c) { return c.side === 0 ? f.foes.filter(x => x.hp > 0) : (f.a.hp > 0 ? [f.a] : []); }
+function nearest(f, c) {
+  let best = null, bd = Infinity;
+  for (const o of foesOf(f, c)) { const d = Math.hypot(o.x - c.x, o.y - c.y) - o.r; if (d < bd) { bd = d; best = o; } }
+  return best;
+}
+function ready(c, key) { return !(c.cds[key] > 0); }
 
-function heal(c, amount) { if (c.hp > 0) c.hp = Math.min(c.maxHp, c.hp + amount); }
+function heal(f, c, amount, show) {
+  if (c.hp <= 0 || amount <= 0) return;
+  const before = c.hp; c.hp = Math.min(c.maxHp, c.hp + amount);
+  if (show && c.hp - before >= 1) f.events.push({ type: 'heal', x: c.x, y: c.y, amount: c.hp - before });
+}
 // All damage goes through here. Defense blocks a share of every hit unless the damage is 'true'.
 function hurt(f, tgt, raw, kind) {
   if (f.demo || tgt.hp <= 0 || raw <= 0 || tgt.invuln > 0) return 0;
@@ -291,30 +364,34 @@ function hurt(f, tgt, raw, kind) {
 }
 function attack(f, att, tgt, mult, kind) {
   if (f.demo) return 0;
-  let d = att.dmg * mult * (0.8 + 0.4 * f.rng());
+  let d = att.dmg * att.dmgMult * mult * (0.8 + 0.4 * f.rng());
   if (att.rage > 0) d *= 1.5;
   return hurt(f, tgt, d, kind || 'hit');
 }
 // Send a circle flying in a direction. It eases back to its normal speed afterwards.
-// Being launched also tears a Vampire off whatever it was biting.
-function launch(o, ang, mult) { const sp = Math.max(o.speed, 300) * mult; o.vx = Math.cos(ang) * sp; o.vy = Math.sin(ang) * sp; if (o.latchT > 0) { o.latchT = 0; o.latchCd = Math.max(o.latchCd, 1); } }
+// Being launched also tears a Vampire off whatever it was biting and stops a charge. The Great Wall does not move.
+function launch(o, ang, mult) {
+  if (o.fixed) return;
+  const sp = Math.max(o.speed, 300) * mult; o.vx = Math.cos(ang) * sp; o.vy = Math.sin(ang) * sp; o.chargeT = 0;
+  if (o.latchT > 0) { o.latchT = 0; o.latchCd = Math.max(o.latchCd, 1); }
+}
 // A Vampire's hits heal it.
 function drain(f, c, o, mult) {
-  const dealt = attack(f, c, o, mult, 'bite');
-  heal(c, dealt * LEECH[c.s('thirst')]);
+  const dealt = attack(f, c, o, mult * c.m.biteDmg, 'bite');
+  heal(f, c, dealt * LEECH[c.s('thirst')] * c.m.leech, true);
   return dealt;
 }
 // Where a circle will be after t seconds if it keeps going, bouncing off the walls.
-function predict(o, t) {
-  const lo = o.r, span = ARENA - 2 * o.r;
+function predict(o, t, W) {
+  const lo = o.r, span = W - 2 * o.r;
   const fold = v => { let u = ((v - lo) % (2 * span) + 2 * span) % (2 * span); return lo + (u > span ? 2 * span - u : u); };
   return [fold(o.x + o.vx * t), fold(o.y + o.vy * t)];
 }
 // Aim a projectile at where the rival will be when it arrives.
-function leadAim(c, o, speed) {
-  if (o.frozen > 0 || o.poolT > 0) return Math.atan2(o.y - c.y, o.x - c.x);
+function leadAim(c, o, speed, W) {
+  if (o.frozen > 0 || o.poolT > 0 || o.fixed) return Math.atan2(o.y - c.y, o.x - c.x);
   let t = Math.hypot(o.x - c.x, o.y - c.y) / speed, p;
-  for (let i = 0; i < 3; i++) { p = predict(o, t); t = Math.hypot(p[0] - c.x, p[1] - c.y) / speed; }
+  for (let i = 0; i < 3; i++) { p = predict(o, t, W); t = Math.hypot(p[0] - c.x, p[1] - c.y) / speed; }
   return Math.atan2(p[1] - c.y, p[0] - c.x);
 }
 function segDist(px, py, x1, y1, x2, y2) {
@@ -325,45 +402,68 @@ function segDist(px, py, x1, y1, x2, y2) {
 // Arrows fly in a straight line. The Archer aims at where the rival will be when the arrow arrives,
 // with a small random spread, so a rival that speeds up, turns or bounces can still get out of the way.
 // A stun arrow curves toward the rival for its first second, but only gently, so it can still miss.
-function fireArrow(f, c, o) {
+function fireArrow(f, c, o, ang0, volley) {
   const stun = !f.demo && c.s('stun') > 0 && f.rng() < STUN_CHANCE[c.s('stun')];
-  const dist = Math.hypot(o.x - c.x, o.y - c.y), t = o.frozen > 0 || o.poolT > 0 ? 0 : dist / ARROW_SPEED;
-  const tx = Math.max(o.r, Math.min(ARENA - o.r, o.x + o.vx * t)), ty = Math.max(o.r, Math.min(ARENA - o.r, o.y + o.vy * t));
-  const ang = Math.atan2(ty - c.y, tx - c.x) + (f.rng() * 2 - 1) * ARROW_SPREAD;
-  f.arrows.push({ x: c.x + Math.cos(ang) * c.r, y: c.y + Math.sin(ang) * c.r, ang, homeT: stun ? STUN_HOMING : 0, stun, side: c.side });
+  let ang = ang0;
+  if (ang === undefined) {
+    const dist = Math.hypot(o.x - c.x, o.y - c.y), t = o.frozen > 0 || o.poolT > 0 ? 0 : dist / ARROW_SPEED;
+    const tx = Math.max(o.r, Math.min(f.W - o.r, o.x + o.vx * t)), ty = Math.max(o.r, Math.min(f.W - o.r, o.y + o.vy * t));
+    ang = Math.atan2(ty - c.y, tx - c.x) + (f.rng() * 2 - 1) * ARROW_SPREAD;
+  }
+  f.arrows.push({ x: c.x + Math.cos(ang) * c.r, y: c.y + Math.sin(ang) * c.r, ang, homeT: stun ? STUN_HOMING : 0, stun, side: c.side, volley: volley || 0 });
 }
+// Volley: arrows fanned evenly across an arc, centered on where the rival is heading.
+function fireVolley(f, c, o) {
+  const n = VOLLEY_ARROWS[c.s('arc')], aim = leadAim(c, o, ARROW_SPEED, f.W), id = ++f.volleys;
+  for (let i = 0; i < n; i++) fireArrow(f, c, o, aim + (i / (n - 1) - 0.5) * VOLLEY_ARC, id);
+  f.events.push({ type: 'text', x: c.x, y: c.y, text: 'VOLLEY' });
+}
+// Spike Shot: every spike flies at where the rival is heading, then the Spike is bare until they grow back.
+function fireSpikes(f, c, o) {
+  const aim = leadAim(c, o, SHOT_SPEED, f.W), spin = f.t * (c.side ? -1 : 1);
+  for (let i = 0; i < SHOT_SPIKES; i++) {
+    const a = i / SHOT_SPIKES * Math.PI * 2 + spin, sx = c.x + Math.cos(a) * (c.r + 6), sy = c.y + Math.sin(a) * (c.r + 6);
+    const tx = c.x + Math.cos(aim) * 1000, ty = c.y + Math.sin(aim) * 1000;
+    f.thorns.push({ side: c.side, x: sx, y: sy, ang: Math.atan2(ty - sy, tx - sx) + (f.rng() * 2 - 1) * 0.06, speed: SHOT_SPEED, mult: SHOT_MULT[c.s('spikeshot')] });
+  }
+  c.bareT = SHOT_BARE[c.s('spikeshot')];
+  f.events.push({ type: 'text', x: c.x, y: c.y, text: 'SPIKE SHOT' });
+}
+function latchedBy(f, c) { return [f.a, ...f.foes].some(x => x.latchT > 0 && x.latchOn === c); }
+
 function abilities(f, c, o) {
-  const dist = Math.hypot(o.x - c.x, o.y - c.y);
+  const dist = Math.hypot(o.x - c.x, o.y - c.y), T = foesOf(f, c);
   c.aim = Math.atan2(o.y - c.y, o.x - c.x);
   // Silenced: no attacks and no abilities. The Knight's swords keep turning but cut nothing.
   if (c.silence > 0) { if (c.cls === 'knight') c.swordAng += swordSpin(c) * DT; return; }
   if (c.cls === 'knight') {
     // A Knight with a Vampire latched onto it cannot swing: the swords stop until the Vampire lets go.
-    const bitten = o.latchT > 0;
+    const bitten = latchedBy(f, c);
     if (!bitten) c.swordAng += swordSpin(c) * DT;
     const n = swordCount(c), len = swordLen(c), w = swordWidth(c);
-    for (let i = 0; i < n; i++) {
-      c.swordCd[i] -= DT;
-      if (c.swordCd[i] > 0 || bitten) continue;
+    for (let i = 0; i < n && !bitten; i++) {
       const a = c.swordAng + i * Math.PI * 2 / n, ca = Math.cos(a), sa = Math.sin(a);
-      if (segDist(o.x, o.y, c.x + ca * c.r, c.y + sa * c.r, c.x + ca * (c.r + len), c.y + sa * (c.r + len)) < o.r + w / 2) {
-        c.swordCd[i] = 0.45;
-        f.events.push({ type: 'slash', x: o.x - Math.cos(c.aim) * o.r, y: o.y - Math.sin(c.aim) * o.r });
-        attack(f, c, o, SWORD_SHARE[n - 1]);
+      for (const t of T) {
+        const key = 's' + i + '_' + t.id;
+        if (!ready(c, key)) continue;
+        if (segDist(t.x, t.y, c.x + ca * c.r, c.y + sa * c.r, c.x + ca * (c.r + len), c.y + sa * (c.r + len)) < t.r + w / 2) {
+          c.cds[key] = 0.45;
+          f.events.push({ type: 'slash', x: t.x - Math.cos(c.aim) * t.r, y: t.y - Math.sin(c.aim) * t.r });
+          attack(f, c, t, SWORD_SHARE[n - 1]);
+        }
       }
     }
-    // Great Cleave: one big swing when the rival is inside the hit zone, flinging it along the swing.
+    // Great Cleave: one big swing when a rival is inside the hit zone, flinging everything in it along the swing.
     c.cleaveT -= DT;
     if (c.s('cleave') && c.cleaveT <= 0 && dist < c.r + o.r + CLEAVE_ZONE) {
       c.cleaveT = CLEAVE_CD[c.s('cleave')]; c.cleaveFx = 0.3; c.cleaveAng = c.aim;
-      launch(o, c.aim + 1.1, 2.6);
+      for (const t of T) if (Math.hypot(t.x - c.x, t.y - c.y) < c.r + t.r + CLEAVE_ZONE) { launch(t, c.aim + 1.1, 2.6); attack(f, c, t, CLEAVE_MULT[c.s('cleave')], 'crit'); }
       f.events.push({ type: 'text', x: o.x, y: o.y, text: 'CLEAVE' });
-      attack(f, c, o, CLEAVE_MULT[c.s('cleave')], 'crit');
     }
   } else if (c.cls === 'archer') {
     c.shootT -= DT;
     if (c.shootT <= 0) {
-      c.shootT = SHOOT_EVERY[c.s('rapid')];
+      c.shootT = SHOOT_EVERY[c.s('rapid')] / c.m.fireRate;
       fireArrow(f, c, o);
       if (!f.demo && c.s('double') && f.rng() < DOUBLE[c.s('double')]) c.extraT = 0.18;
     }
@@ -371,16 +471,15 @@ function abilities(f, c, o) {
     c.kickT -= DT;
     if (c.s('kick') && c.kickT <= 0 && dist < c.r + o.r + 62) {
       c.kickT = KICK_CD[c.s('kick')];
-      launch(o, c.aim, 2.4);
+      for (const t of T) if (Math.hypot(t.x - c.x, t.y - c.y) < c.r + t.r + 62) { launch(t, Math.atan2(t.y - c.y, t.x - c.x), 2.4); attack(f, c, t, KICK_MULT[c.s('kick')]); }
       f.events.push({ type: 'text', x: o.x, y: o.y, text: 'KICK' });
-      attack(f, c, o, KICK_MULT[c.s('kick')]);
     }
   } else if (c.cls === 'spike') {
     c.grabT -= DT;
     if (c.s('grab') && c.grabT <= 0) {
       c.grabT = GRAB_CD[c.s('grab')];
       // Aim at where the rival will be when the rope arrives, bounces included.
-      f.ropes.push({ side: c.side, ang: leadAim(c, o, ROPE_SPEED), len: c.r });
+      f.ropes.push({ side: c.side, ang: leadAim(c, o, ROPE_SPEED, f.W), len: c.r });
     }
   } else if (c.cls === 'vampire') {
     if (c.s('bat') && c.batCd <= 0 && c.batT <= 0 && o.poolT <= 0) {
@@ -397,69 +496,88 @@ function abilities(f, c, o) {
   }
 }
 
+// The Great Wall stands still. Its shuriken circles it, and it sends a shock wave across the arena every few seconds.
+function wallTurn(f, c) {
+  if (c.silence > 0) return;
+  c.swordAng += SHURIKEN_SPIN * DT;
+  const sx = c.x + Math.cos(c.swordAng) * (c.r + SHURIKEN_ORBIT), sy = c.y + Math.sin(c.swordAng) * (c.r + SHURIKEN_ORBIT);
+  for (const t of foesOf(f, c)) {
+    if (ready(c, 'shu' + t.id) && Math.hypot(t.x - sx, t.y - sy) < t.r + SHURIKEN_R) {
+      c.cds['shu' + t.id] = 0.6; f.events.push({ type: 'slash', x: sx, y: sy }); attack(f, c, t, 1);
+      launch(t, Math.atan2(t.y - sy, t.x - sx), 1.4);
+    }
+  }
+  c.waveT -= DT;
+  if (c.waveT <= 0 && !f.demo) { c.waveT = WAVE_EVERY; f.waves.push({ owner: c, x: c.x, y: c.y, r: c.r, hit: new Set() }); }
+}
+
 function useTool(f, id) {
   if (f.over || f.demo) return false;
-  const { a, b } = f;
-  if (id === 'medkit') { heal(a, 30); f.events.push({ type: 'text', x: a.x, y: a.y, text: '+30' }); }
-  else if (id === 'bomb') { f.events.push({ type: 'boom', x: b.x, y: b.y }); hurt(f, b, 20, 'true'); }
+  const a = f.a, b = nearest(f, a);
+  if (id === 'medkit') { heal(f, a, 30); f.events.push({ type: 'text', x: a.x, y: a.y, text: '+30' }); }
+  else if (id === 'bomb') { if (!b) return false; f.events.push({ type: 'boom', x: b.x, y: b.y }); hurt(f, b, 20, 'true'); }
   else if (id === 'rage') { a.rage = 5; f.events.push({ type: 'text', x: a.x, y: a.y, text: 'RAGE' }); }
-  else if (id === 'freeze') { b.frozen = 2.5; f.events.push({ type: 'text', x: b.x, y: b.y, text: 'FROZEN' }); }
+  else if (id === 'freeze') { for (const o of foesOf(f, a)) o.frozen = 2.5; if (b) f.events.push({ type: 'text', x: b.x, y: b.y, text: 'FROZEN' }); }
   else if (id === 'barrier') { a.invuln = 2.5; f.events.push({ type: 'text', x: a.x, y: a.y, text: 'BARRIER' }); }
   else return false;
   return true;
 }
 
+// Contact damage: a Spike with its spikes out, or a slime.
+function spiky(c) { return c.cls === 'spike' && c.frozen <= 0 && c.silence <= 0 && c.bareT <= 0; }
+function contactHurts(c) { return spiky(c) || (c.cls === 'slime' && c.frozen <= 0 && c.silence <= 0); }
+
 function stepFight(f) {
   if (f.over) return;
   f.t += DT;
-  const { a, b } = f;
-  for (const c of [a, b]) {
-    const o = c === a ? b : a;
-    c.shieldT -= DT; c.invuln -= DT; c.flash -= DT; c.rage -= DT; c.spikeCd -= DT; c.cleaveFx -= DT; c.latchCd -= DT; c.batCd -= DT; c.silence -= DT; c.stunImmune -= DT; c.bareT -= DT;
-    if (c.s('thirst') && !f.demo) heal(c, REGEN[c.s('thirst')] * DT);
+  const W = f.W;
+  for (const c of [f.a, ...f.foes]) {
+    if (c.hp <= 0) continue;
+    const o = nearest(f, c);
+    c.shieldT -= DT; c.invuln -= DT; c.flash -= DT; c.rage -= DT; c.cleaveFx -= DT; c.latchCd -= DT; c.batCd -= DT; c.silence -= DT; c.stunImmune -= DT; c.bareT -= DT; c.activeCd -= DT;
+    for (const k in c.cds) c.cds[k] -= DT;
+    if (c.s('thirst') && !f.demo) heal(f, c, REGEN[c.s('thirst')] * DT);
     if (c.poisonT > 0) { c.poisonT -= DT; if (!f.demo && c.invuln <= 0) c.hp -= c.poisonDps * DT; }
-    if (!f.demo && f.t > SUDDEN_AT) c.hp -= (2 + (f.t - SUDDEN_AT) * 1.5) * DT;
-    if (c.frozen > 0) { c.frozen -= DT; c.latchT = 0; c.batT = 0; continue; }
+    if (!f.demo && f.t > f.suddenAt) c.hp -= (2 + (f.t - f.suddenAt) * 1.5) * DT;
+    if (!o) continue;
+    if (c.frozen > 0) { c.frozen -= DT; c.latchT = 0; c.batT = 0; c.chargeT = 0; continue; }
+    if (c.fixed) { c.vx = c.vy = 0; wallTurn(f, c); continue; }
     // Blood Pool: a puddle on the floor. Nothing can hurt it, it heals, it cannot act,
-    // and a rival that crosses it gets bitten once.
+    // and the first rival to cross it gets bitten.
     if (c.poolT > 0) {
-      c.poolT -= DT; c.invuln = Math.max(c.invuln, 2 * DT); heal(c, POOL_HEAL[c.s('pool')] / POOL_SECS * DT);
-      if (!c.poolHit && o.poolT <= 0 && Math.hypot(o.x - c.x, o.y - c.y) < c.r * 1.1 + o.r) {
-        c.poolHit = true; f.events.push({ type: 'slash', x: o.x, y: o.y }); drain(f, c, o, POOL_MULT[c.s('pool')]);
+      c.poolT -= DT; c.invuln = Math.max(c.invuln, 2 * DT); heal(f, c, POOL_HEAL[c.s('pool')] / POOL_SECS * DT);
+      if (!c.poolHit) for (const t of foesOf(f, c)) if (t.poolT <= 0 && Math.hypot(t.x - c.x, t.y - c.y) < c.r * 1.1 + t.r) {
+        c.poolHit = true; f.events.push({ type: 'slash', x: t.x, y: t.y }); drain(f, c, t, POOL_MULT[c.s('pool')]); break;
       }
       continue;
     }
-    // Active buttons: the player presses them. A rival uses its own when the moment looks right.
+    // Active buttons: the player presses them. A rival presses its own when the moment looks right.
     const act = ACTIVE[c.cls];
-    if (act && c.s(act) && !c.activeUsed && c.hp > 0 && c.silence <= 0 && (c.side === 0 ? f.activePress : rivalWants(f, c, o, act))) {
-      c.activeUsed = true;
+    if (act && c.s(act) && c.uses > 0 && c.activeCd <= 0 && c.silence <= 0 && c.latchT <= 0 && c.batT <= 0 && c.chargeT <= 0 &&
+        (c.side === 0 ? f.activePress : rivalWants(f, c, o, act))) {
+      c.uses--; c.activeCd = ACTIVE_GAP[act](c.s(act));
       if (act === 'pool') {
-        c.poolT = POOL_SECS; c.poolHit = false; c.latchT = 0; c.batT = 0;
+        c.poolT = POOL_SECS; c.poolHit = false; c.latchT = 0;
         f.events.push({ type: 'text', x: c.x, y: c.y, text: 'BLOOD POOL' });
         continue;
       }
-      // Spike Shot: every spike flies at where the rival is heading, then the Spike is bare until they grow back.
-      const aim = leadAim(c, o, SHOT_SPEED), spin = f.t * (c.side ? -1 : 1);
-      for (let i = 0; i < SHOT_SPIKES; i++) {
-        const a = i / SHOT_SPIKES * Math.PI * 2 + spin, sx = c.x + Math.cos(a) * (c.r + 6), sy = c.y + Math.sin(a) * (c.r + 6);
-        const tx = c.x + Math.cos(aim) * 1000, ty = c.y + Math.sin(aim) * 1000;
-        f.thorns.push({ side: c.side, x: sx, y: sy, ang: Math.atan2(ty - sy, tx - sx) + (f.rng() * 2 - 1) * 0.06, speed: SHOT_SPEED, mult: SHOT_MULT[c.s('spikeshot')] });
-      }
-      c.bareT = SHOT_BARE[c.s('spikeshot')];
-      f.events.push({ type: 'text', x: c.x, y: c.y, text: 'SPIKE SHOT' });
+      if (act === 'spikeshot') fireSpikes(f, c, o);
+      else if (act === 'arc') fireVolley(f, c, o);
+      else if (act === 'charge') { c.chargeT = CHARGE_MAX; f.events.push({ type: 'text', x: c.x, y: c.y, text: 'CHARGE' }); }
     }
-    // Latched: the Vampire rides on the rival and bites before letting go.
-    if (c.latchT > 0 && (o.poolT > 0 || o.batT > 0 || c.silence > 0)) c.latchT = 0;
+    // Latched: the Vampire rides on its target and bites before letting go.
+    const lt = c.latchOn;
+    if (c.latchT > 0 && (!lt || lt.hp <= 0 || lt.poolT > 0 || lt.batT > 0 || c.silence > 0)) c.latchT = 0;
     if (c.latchT > 0) {
       c.latchT -= DT; c.biteT -= DT;
-      c.x = Math.max(c.r, Math.min(ARENA - c.r, o.x + Math.cos(c.latchAng) * (o.r + c.r)));
-      c.y = Math.max(c.r, Math.min(ARENA - c.r, o.y + Math.sin(c.latchAng) * (o.r + c.r)));
+      c.x = Math.max(c.r, Math.min(W - c.r, lt.x + Math.cos(c.latchAng) * (lt.r + c.r)));
+      c.y = Math.max(c.r, Math.min(W - c.r, lt.y + Math.sin(c.latchAng) * (lt.r + c.r)));
       if (c.biteT <= 0) {
         c.biteT += c.biteGap;
-        f.events.push({ type: 'slash', x: o.x + Math.cos(c.latchAng) * o.r, y: o.y + Math.sin(c.latchAng) * o.r });
-        drain(f, c, o, 1);
+        f.events.push({ type: 'slash', x: lt.x + Math.cos(c.latchAng) * lt.r, y: lt.y + Math.sin(c.latchAng) * lt.r });
+        drain(f, c, lt, 1);
         // Biting a Spike hurts: its spikes prick the Vampire on every bite, at reduced damage.
-        if (spiky(o)) attack(f, o, c, SPIKE_PRICK);
+        if (spiky(lt)) attack(f, lt, c, SPIKE_PRICK * lt.m.contactDmg);
       }
       if (c.latchT <= 0) { c.latchCd = LATCH_CD; launch(c, c.latchAng, 1.2); }
       continue;
@@ -471,25 +589,31 @@ function stepFight(f) {
       let turn = Math.atan2(f.input.y, f.input.x) - ang; turn = Math.atan2(Math.sin(turn), Math.cos(turn));
       ang += Math.max(-7 * DT, Math.min(7 * DT, turn));
     }
-    if (c.batT > 0) {
+    if (c.chargeT > 0) {
+      // Charge: march straight at the rival at a steady pace, taking no damage, until touching it.
+      c.chargeT -= DT; c.invuln = Math.max(c.invuln, 2 * DT);
+      if (c.silence > 0) c.chargeT = 0;
+      ang = c.aim; sp = c.speed * CHARGE_PACE;
+      if (Math.hypot(o.x - c.x, o.y - c.y) < c.r + o.r + 4) c.chargeT = 0;
+    } else if (c.batT > 0) {
       // Bat Form: a fast dash that curves toward the rival, takes no damage, and bites once on the way through.
       c.batT -= DT; c.invuln = Math.max(c.invuln, 2 * DT);
       let turn = c.aim - ang; turn = Math.atan2(Math.sin(turn), Math.cos(turn));
       ang += Math.max(-5 * DT, Math.min(5 * DT, turn));
       sp = c.speed * 2.4;
-      if (!c.batHit && o.poolT <= 0 && Math.hypot(o.x - c.x, o.y - c.y) < c.r + o.r) { c.batHit = true; drain(f, c, o, BAT_MULT[c.s('bat')]); }
+      if (!c.batHit) for (const t of foesOf(f, c)) if (t.poolT <= 0 && Math.hypot(t.x - c.x, t.y - c.y) < c.r + t.r) { c.batHit = true; drain(f, c, t, BAT_MULT[c.s('bat')]); break; }
     } else sp += (c.speed - sp) * Math.min(1, 4 * DT); // ease back to cruising speed after a knock
     c.vx = Math.cos(ang) * sp; c.vy = Math.sin(ang) * sp;
     c.x += c.vx * DT; c.y += c.vy * DT;
     let wall = false;
     if (c.x < c.r) { c.x = c.r; c.vx = Math.abs(c.vx); wall = true; }
-    if (c.x > ARENA - c.r) { c.x = ARENA - c.r; c.vx = -Math.abs(c.vx); wall = true; }
+    if (c.x > W - c.r) { c.x = W - c.r; c.vx = -Math.abs(c.vx); wall = true; }
     if (c.y < c.r) { c.y = c.r; c.vy = Math.abs(c.vy); wall = true; }
-    if (c.y > ARENA - c.r) { c.y = ARENA - c.r; c.vy = -Math.abs(c.vy); wall = true; }
+    if (c.y > W - c.r) { c.y = W - c.r; c.vy = -Math.abs(c.vy); wall = true; }
     if (wall) {
       // Wall Stings: leave a sting where the Spike touched the wall. At most 5 at a time.
       if (c.s('stings') && c.bareT <= 0) {
-        f.stings.push({ side: c.side, x: c.x <= c.r + 0.01 ? 0 : (c.x >= ARENA - c.r - 0.01 ? ARENA : c.x), y: c.y <= c.r + 0.01 ? 0 : (c.y >= ARENA - c.r - 0.01 ? ARENA : c.y) });
+        f.stings.push({ side: c.side, x: c.x <= c.r + 0.01 ? 0 : (c.x >= W - c.r - 0.01 ? W : c.x), y: c.y <= c.r + 0.01 ? 0 : (c.y >= W - c.r - 0.01 ? W : c.y) });
         const mine = f.stings.filter(st => st.side === c.side);
         if (mine.length > 5) f.stings.splice(f.stings.indexOf(mine[0]), 1);
       }
@@ -499,116 +623,167 @@ function stepFight(f) {
     }
   }
   f.activePress = false;
-  const out = p => p.x < 0 || p.x > ARENA || p.y < 0 || p.y > ARENA;
+  const out = p => p.x < 0 || p.x > W || p.y < 0 || p.y > W;
+  // Projectiles of the rival side belong to the first living foe that shot them; bosses shoot none, so the rival is f.b.
+  const shooter = side => side === 0 ? f.a : f.b;
   for (const ar of f.arrows) {
-    const tgt = ar.side === 0 ? b : a, own = ar.side === 0 ? a : b;
-    if (ar.homeT > 0) {
+    const own = shooter(ar.side), targets = ar.side === 0 ? f.foes.filter(x => x.hp > 0) : (f.a.hp > 0 ? [f.a] : []);
+    const near = targets.reduce((best, t) => !best || Math.hypot(t.x - ar.x, t.y - ar.y) < Math.hypot(best.x - ar.x, best.y - ar.y) ? t : best, null);
+    if (ar.homeT > 0 && near) {
       ar.homeT -= DT;
-      let turn = Math.atan2(tgt.y - ar.y, tgt.x - ar.x) - ar.ang; turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+      let turn = Math.atan2(near.y - ar.y, near.x - ar.x) - ar.ang; turn = Math.atan2(Math.sin(turn), Math.cos(turn));
       ar.ang += Math.max(-STUN_TURN * DT, Math.min(STUN_TURN * DT, turn));
     }
     ar.x += Math.cos(ar.ang) * ARROW_SPEED * DT; ar.y += Math.sin(ar.ang) * ARROW_SPEED * DT;
-    if (tgt.poolT <= 0 && Math.hypot(tgt.x - ar.x, tgt.y - ar.y) < tgt.r) {
-      ar.done = true; f.arrowHits = (f.arrowHits || 0) + 1;
-      const dealt = attack(f, own, tgt, 1, 'arrow');
-      if (dealt > 0 && ar.stun && tgt.stunImmune <= 0) {
-        tgt.frozen = Math.max(tgt.frozen, STUN_SECS); tgt.stunImmune = STUN_SECS + STUN_IMMUNE;
-        f.events.push({ type: 'text', x: tgt.x, y: tgt.y, text: 'STUN' });
+    const hit = targets.find(t => t.poolT <= 0 && t !== ar.last && Math.hypot(t.x - ar.x, t.y - ar.y) < t.r);
+    if (hit) {
+      ar.done = true; ar.last = hit; f.arrowHits = (f.arrowHits || 0) + 1;
+      // In a volley, only the first arrow to reach a target hits it at full strength.
+      let mult = own.m.arrowDmg;
+      if (ar.volley) { const key = ar.volley + '_' + hit.id; mult *= f.volleyHit[key] ? VOLLEY_REPEAT : VOLLEY_FIRST[own.s('arc')]; f.volleyHit[key] = true; }
+      const dealt = attack(f, own, hit, mult, 'arrow');
+      if (dealt > 0 && ar.stun && hit.stunImmune <= 0) {
+        hit.frozen = Math.max(hit.frozen, STUN_SECS); hit.stunImmune = STUN_SECS + STUN_IMMUNE;
+        f.events.push({ type: 'text', x: hit.x, y: hit.y, text: 'STUN' });
       }
+      // An arrow that finishes off a slime keeps flying.
+      if (hit.cls === 'slime' && hit.hp <= 0) ar.done = false;
     } else if (out(ar)) {
       ar.done = true; f.arrowMisses = (f.arrowMisses || 0) + 1;
-      if (!f.demo) f.events.push({ type: 'text', x: Math.max(50, Math.min(ARENA - 50, ar.x)), y: Math.max(70, Math.min(ARENA - 20, ar.y)), text: 'MISS', dim: true });
+      if (!f.demo && !ar.volley) f.events.push({ type: 'text', x: Math.max(50, Math.min(W - 50, ar.x)), y: Math.max(70, Math.min(W - 20, ar.y)), text: 'MISS', dim: true });
     }
   }
   f.arrows = f.arrows.filter(ar => !ar.done);
-  // Ropes fly straight from the Spike. A rope that touches the rival yanks it toward the Spike.
+  // Ropes fly straight from the Spike. A rope that touches a rival yanks it toward the Spike and silences it.
   for (const rp of f.ropes) {
-    const own = rp.side === 0 ? a : b, tgt = rp.side === 0 ? b : a;
+    const own = shooter(rp.side);
     rp.len += ROPE_SPEED * DT;
     rp.x = own.x + Math.cos(rp.ang) * rp.len; rp.y = own.y + Math.sin(rp.ang) * rp.len;
-    if (tgt.poolT <= 0 && tgt.batT <= 0 && Math.hypot(tgt.x - rp.x, tgt.y - rp.y) < tgt.r + 14) {
-      rp.done = true; launch(tgt, Math.atan2(own.y - tgt.y, own.x - tgt.x), 2.6);
+    const tgt = foesOf(f, own).find(t => t.poolT <= 0 && t.batT <= 0 && Math.hypot(t.x - rp.x, t.y - rp.y) < t.r + 14);
+    if (tgt) {
+      // The Great Wall can't be moved, so the rope pulls the Spike to it instead.
+      rp.done = true; if (tgt.fixed) launch(own, Math.atan2(tgt.y - own.y, tgt.x - own.x), 2.6); else launch(tgt, Math.atan2(own.y - tgt.y, own.x - tgt.x), 2.6);
       tgt.silence = Math.max(tgt.silence, SILENCE[own.s('grab')]);
       f.events.push({ type: 'text', x: tgt.x, y: tgt.y, text: 'SILENCED' });
-    } else if (rp.len > 620 || out(rp)) rp.done = true;
+    } else if (rp.len > W + 20 || out(rp)) rp.done = true;
   }
   f.ropes = f.ropes.filter(rp => !rp.done);
   for (const th of f.thorns) {
-    const own = th.side === 0 ? a : b, tgt = th.side === 0 ? b : a;
+    const own = shooter(th.side);
     th.x += Math.cos(th.ang) * th.speed * DT; th.y += Math.sin(th.ang) * th.speed * DT;
-    if (tgt.poolT <= 0 && Math.hypot(tgt.x - th.x, tgt.y - th.y) < tgt.r + 6) { th.done = true; f.shotHits = (f.shotHits || 0) + 1; attack(f, own, tgt, th.mult); }
+    const tgt = foesOf(f, own).find(t => t.poolT <= 0 && Math.hypot(t.x - th.x, t.y - th.y) < t.r + 6);
+    if (tgt) { th.done = true; f.shotHits = (f.shotHits || 0) + 1; attack(f, own, tgt, th.mult); }
     else if (out(th)) th.done = true;
   }
   f.thorns = f.thorns.filter(th => !th.done);
   for (const st of f.stings) {
-    const own = st.side === 0 ? a : b, tgt = st.side === 0 ? b : a;
-    if (tgt.poolT <= 0 && Math.hypot(tgt.x - st.x, tgt.y - st.y) < tgt.r + 10) { st.done = true; f.events.push({ type: 'slash', x: st.x, y: st.y }); attack(f, own, tgt, STING_MULT[own.s('stings')]); }
+    const own = shooter(st.side);
+    const tgt = foesOf(f, own).find(t => t.poolT <= 0 && Math.hypot(t.x - st.x, t.y - st.y) < t.r + 10);
+    if (tgt) { st.done = true; f.events.push({ type: 'slash', x: st.x, y: st.y }); attack(f, own, tgt, STING_MULT[own.s('stings')]); }
   }
   f.stings = f.stings.filter(st => !st.done);
-  // Blood Servants drift toward the rival, bounce off walls, and burst on contact.
+  // Blood Servants drift toward the nearest rival, bounce off walls, and burst on contact, healing their Vampire.
   for (const sv of f.servants) {
-    const own = sv.side === 0 ? a : b, tgt = sv.side === 0 ? b : a;
+    const own = shooter(sv.side), tgt = nearest(f, own);
     sv.life -= DT;
-    let turn = Math.atan2(tgt.y - sv.y, tgt.x - sv.x) - sv.ang; turn = Math.atan2(Math.sin(turn), Math.cos(turn));
-    sv.ang += Math.max(-1.6 * DT, Math.min(1.6 * DT, turn));
+    if (tgt) { let turn = Math.atan2(tgt.y - sv.y, tgt.x - sv.x) - sv.ang; turn = Math.atan2(Math.sin(turn), Math.cos(turn)); sv.ang += Math.max(-1.6 * DT, Math.min(1.6 * DT, turn)); }
     sv.x += Math.cos(sv.ang) * 300 * DT; sv.y += Math.sin(sv.ang) * 300 * DT;
-    if (sv.x < SERV_R || sv.x > ARENA - SERV_R) { sv.ang = Math.PI - sv.ang; sv.x = Math.max(SERV_R, Math.min(ARENA - SERV_R, sv.x)); }
-    if (sv.y < SERV_R || sv.y > ARENA - SERV_R) { sv.ang = -sv.ang; sv.y = Math.max(SERV_R, Math.min(ARENA - SERV_R, sv.y)); }
-    if (tgt.poolT <= 0 && tgt.batT <= 0 && Math.hypot(tgt.x - sv.x, tgt.y - sv.y) < tgt.r + SERV_R) { sv.done = true; drain(f, own, tgt, SERV_MULT); }
+    if (sv.x < SERV_R || sv.x > W - SERV_R) { sv.ang = Math.PI - sv.ang; sv.x = Math.max(SERV_R, Math.min(W - SERV_R, sv.x)); }
+    if (sv.y < SERV_R || sv.y > W - SERV_R) { sv.ang = -sv.ang; sv.y = Math.max(SERV_R, Math.min(W - SERV_R, sv.y)); }
+    const hit = foesOf(f, own).find(t => t.poolT <= 0 && t.batT <= 0 && Math.hypot(t.x - sv.x, t.y - sv.y) < t.r + SERV_R);
+    if (hit) { sv.done = true; drain(f, own, hit, SERV_MULT); }
     else if (sv.life <= 0) sv.done = true;
   }
   f.servants = f.servants.filter(sv => !sv.done);
-  // Circles bounce off each other. The bump does no damage unless a Spike is involved, and a Vampire latches on.
-  // A bat or a blood pool is passed straight through, and a latched pair is already held together.
-  const dx = b.x - a.x, dy = b.y - a.y, dist = Math.hypot(dx, dy) || 0.001, min = a.r + b.r;
-  const ghost = c => c.batT > 0 || c.poolT > 0;
-  if (dist < min && !ghost(a) && !ghost(b) && a.latchT <= 0 && b.latchT <= 0) {
-    const nx = dx / dist, ny = dy / dist;
-    const ma = a.frozen > 0 ? 1e6 : a.mass, mb = b.frozen > 0 ? 1e6 : b.mass, tm = ma + mb, push = min - dist;
-    a.x -= nx * push * (mb / tm); a.y -= ny * push * (mb / tm);
-    b.x += nx * push * (ma / tm); b.y += ny * push * (ma / tm);
-    const avx = a.frozen > 0 ? 0 : a.vx, avy = a.frozen > 0 ? 0 : a.vy, bvx = b.frozen > 0 ? 0 : b.vx, bvy = b.frozen > 0 ? 0 : b.vy;
-    const rel = (bvx - avx) * nx + (bvy - avy) * ny;
+  // The Great Wall's shock wave: a ring that grows to cover the arena. Crossing it hurts and knocks you away from the Wall.
+  for (const wv of f.waves) {
+    wv.r += WAVE_SPEED * DT;
+    for (const t of foesOf(f, wv.owner)) {
+      if (wv.hit.has(t.id) || Math.hypot(t.x - wv.x, t.y - wv.y) > wv.r) continue;
+      wv.hit.add(t.id);
+      if (t.poolT > 0) continue;
+      attack(f, wv.owner, t, WAVE_MULT); launch(t, Math.atan2(t.y - wv.y, t.x - wv.x), 1.8);
+    }
+    if (wv.r > W * 1.5) wv.done = true;
+  }
+  f.waves = f.waves.filter(wv => !wv.done);
+  // Collisions. Circles bounce off each other. A bump only hurts if a Spike or a slime is involved, and a Vampire latches on.
+  // A bat or a blood pool is passed straight through, and a latched pair is already held together. Rival slimes just bounce off each other.
+  const live = [f.a, ...f.foes].filter(c => c.hp > 0), ghost = c => c.batT > 0 || c.poolT > 0;
+  for (let i = 0; i < live.length; i++) for (let j = i + 1; j < live.length; j++) {
+    const p = live[i], q = live[j];
+    const dx = q.x - p.x, dy = q.y - p.y, dist = Math.hypot(dx, dy) || 0.001, min = p.r + q.r;
+    if (dist >= min || ghost(p) || ghost(q) || (p.latchT > 0 && p.latchOn === q) || (q.latchT > 0 && q.latchOn === p)) continue;
+    const nx = dx / dist, ny = dy / dist, still = c => c.frozen > 0 || c.fixed;
+    const mp = still(p) ? 1e6 : p.mass, mq = still(q) ? 1e6 : q.mass, tm = mp + mq, push = min - dist;
+    p.x -= nx * push * (mq / tm); p.y -= ny * push * (mq / tm);
+    q.x += nx * push * (mp / tm); q.y += ny * push * (mp / tm);
+    const pvx = still(p) ? 0 : p.vx, pvy = still(p) ? 0 : p.vy, qvx = still(q) ? 0 : q.vx, qvy = still(q) ? 0 : q.vy;
+    const rel = (qvx - pvx) * nx + (qvy - pvy) * ny;
     if (rel < 0) {
-      const j = -2 * rel / (1 / ma + 1 / mb);
-      if (a.frozen <= 0) { a.vx -= j / ma * nx; a.vy -= j / ma * ny; }
-      if (b.frozen <= 0) { b.vx += j / mb * nx; b.vy += j / mb * ny; }
-      f.events.push({ type: 'bump', x: a.x + nx * a.r, y: a.y + ny * a.r });
-      for (const [c, o] of [[a, b], [b, a]]) {
-        if (!spiky(c) || c.spikeCd > 0) continue;
-        c.spikeCd = 0.4;
-        const dealt = attack(f, c, o, 1);
-        if (dealt > 0 && c.s('poison')) { o.poisonDps = POISON[c.s('poison')]; o.poisonT = POISON_SECS; }
+      const jj = -2 * rel / (1 / mp + 1 / mq);
+      if (!still(p)) { p.vx -= jj / mp * nx; p.vy -= jj / mp * ny; }
+      if (!still(q)) { q.vx += jj / mq * nx; q.vy += jj / mq * ny; }
+      f.events.push({ type: 'bump', x: p.x + nx * p.r, y: p.y + ny * p.r });
+      // Contact damage lands on impact, not while two circles rest against each other.
+      if (p.side !== q.side) for (const [c, o] of [[p, q], [q, p]]) {
+        if (!contactHurts(c) || !ready(c, 'touch' + o.id)) continue;
+        c.cds['touch' + o.id] = 0.4;
+        const dealt = attack(f, c, o, c.cls === 'spike' ? c.m.contactDmg : 1);
+        if (dealt > 0 && c.s('poison')) { o.poisonDps = POISON[c.s('poison')] * c.m.poison; o.poisonT = POISON_SECS; }
       }
     }
-    for (const [c, o] of [[a, b], [b, a]]) {
-      if (f.demo || c.cls !== 'vampire' || c.frozen > 0 || c.silence > 0 || c.latchCd > 0) continue;
+    if (p.side === q.side) continue;
+    if (p.chargeT > 0) p.chargeT = 0;
+    if (q.chargeT > 0) q.chargeT = 0;
+    for (const [c, o] of [[p, q], [q, p]]) {
+      if (f.demo || c.cls !== 'vampire' || c.frozen > 0 || c.silence > 0 || c.latchCd > 0 || c.latchT > 0) continue;
       const n = BITES[c.s('longbite')];
-      c.biteGap = LATCH_SECS / 3; c.latchT = c.biteGap * n; c.biteT = c.biteGap / 2; c.latchAng = Math.atan2(c.y - o.y, c.x - o.x);
+      c.biteGap = LATCH_SECS / 3; c.latchT = c.biteGap * n; c.biteT = c.biteGap / 2; c.latchOn = o; c.latchAng = Math.atan2(c.y - o.y, c.x - o.x);
     }
   }
-  if (a.hp <= 0 || b.hp <= 0) {
+  // A fallen slime splits into 3 smaller, faster ones, twice over.
+  for (const c of f.foes) {
+    if (c.hp > 0 || c.dead) continue;
+    c.dead = true;
+    if (c.cls === 'slime' && c.gen < 2 && !f.demo) {
+      const g = c.gen + 1, base = f.slimeBase, off = f.rng() * Math.PI * 2;
+      for (let k = 0; k < 3; k++) {
+        const kid = makeCircle(1, { cls: 'slime', gen: g, traits: {}, stats: { hp: Math.round(base.hp * SLIME_HP[g]), dmg: base.dmg * SLIME_DMG[g], def: 0, spd: base.spd * SLIME_SPD[g] } }, W);
+        const a = off + k * Math.PI * 2 / 3;
+        kid.x = Math.max(kid.r, Math.min(W - kid.r, c.x + Math.cos(a) * c.r * 0.5)); kid.y = Math.max(kid.r, Math.min(W - kid.r, c.y + Math.sin(a) * c.r * 0.5));
+        kid.vx = Math.cos(a) * kid.speed; kid.vy = Math.sin(a) * kid.speed; kid.invuln = 0.4;
+        f.reserve -= kid.maxHp; f.foes.push(kid);
+      }
+      f.events.push({ type: 'text', x: c.x, y: c.y, text: 'SPLIT' });
+    }
+  }
+  if (f.a.latchOn && f.a.latchOn.dead) f.a.latchT = 0;
+  const left = f.foes.filter(c => c.hp > 0);
+  if (left.length) { f.foes = f.foes.filter(c => !c.dead); f.b = left[0]; }
+  if (f.a.hp <= 0 || !left.length) {
     f.over = true;
     // In a double knockout, whoever was closer to surviving wins.
-    if (a.hp <= 0 && b.hp <= 0) f.winner = a.hp === b.hp ? (f.rng() < 0.5 ? 0 : 1) : (a.hp > b.hp ? 0 : 1);
-    else f.winner = a.hp <= 0 ? 1 : 0;
-    a.hp = Math.max(0, a.hp); b.hp = Math.max(0, b.hp);
+    if (f.a.hp <= 0 && !left.length) f.winner = f.a.hp > f.b.hp ? 0 : f.a.hp === f.b.hp ? (f.rng() < 0.5 ? 0 : 1) : 1;
+    else f.winner = f.a.hp <= 0 ? 1 : 0;
+    f.a.hp = Math.max(0, f.a.hp); for (const c of f.foes) c.hp = Math.max(0, c.hp);
   }
 }
 
-// A Spike only hurts on contact while it has spikes and is free to act.
-function spiky(c) { return c.cls === 'spike' && c.frozen <= 0 && c.silence <= 0 && c.bareT <= 0; }
-// When a rival presses its own button: Blood Pool once it is hurt, Spike Shot once there is room to aim.
+// When a rival presses its own button.
 function rivalWants(f, c, o, act) {
+  const dist = Math.hypot(o.x - c.x, o.y - c.y);
   if (act === 'pool') return c.hp < c.maxHp * 0.55;
-  return f.t > 3 && Math.hypot(o.x - c.x, o.y - c.y) > 220 && o.poolT <= 0 && o.batT <= 0;
+  if (act === 'charge') return f.t > 1.5 && dist > c.r + o.r + 180;
+  if (act === 'arc') return f.t > 2 && dist > c.r + o.r + 100;
+  return f.t > 3 && dist > 220 && o.poolT <= 0 && o.batT <= 0;
 }
 
 function addTrait(build, id) { const n = { ...build }; n[id] = (n[id] || 0) + 1; return n; }
-// Traits a circle can still take: its class's own, not maxed, and only upgrades once it holds 3.
+// Traits a circle can still take: its class's own, not maxed, not ruled out by one it has, and only upgrades once it holds 3.
 function openTraits(cls, build, forRival) {
   const full = Object.keys(build).length >= MAX_TRAITS;
-  return CLASSES[cls].traits.filter(id => (build[id] || 0) < maxLv(id) && (!full || build[id]) && !(forRival && FX[id].playerOnly));
+  return CLASSES[cls].traits.filter(id => (build[id] || 0) < maxLv(id) && (!full || build[id]) && !(FX[id].excludes && build[FX[id].excludes]) && !(forRival && FX[id].playerOnly));
 }
 function sample(list, n, rand) { const pool = list.slice(), out = []; while (out.length < n && pool.length) out.push(pool.splice(Math.floor(rand() * pool.length), 1)[0]); return out; }
 function rollChoices(cls, build, rand) { return sample(openTraits(cls, build, false), 3, rand); }
@@ -621,45 +796,117 @@ function makeRival(fights, rand) {
   return { cls, traits, stats: { hp: Math.round(base.hp * (0.75 + 0.04 * fights)), dmg: base.dmg * (0.75 + 0.03 * fights), def: base.def, spd: base.spd } };
 }
 
-// Routes: a Sparring Match is always on offer; the other two are drawn from the rest.
+// Routes. Every 10th stage is a boss fight, and nothing else. Otherwise 3 different routes are drawn at random,
+// with at least one fight among them.
 const ROUTES = {
-  trait:  { name: 'Sparring Match', reward: () => 'Win: pick 1 trait' },
-  stat:   { name: 'Training',       reward: () => 'Win: raise 1 of 2 random stats' },
-  bounty: { name: 'Bounty',         reward: f => `Win: ${bountyCoins(f)} coins` },
-  tool:   { name: 'Armory',         reward: () => 'Win: pick 1 tool' },
-  shop:   { name: 'Shop',           reward: () => 'No fight. Spend coins on traits and tools.' },
+  trait:     { name: 'Sparring Match', fight: true, weight: 2,   reward: () => 'Win: pick 1 trait' },
+  stat:      { name: 'Training',       fight: true, weight: 2,   reward: () => 'Win: raise 1 of 2 random stats' },
+  bounty:    { name: 'Bounty',         fight: true, weight: 1.5, reward: f => `Win: ${bountyCoins(f)} coins` },
+  tool:      { name: 'Armory',         fight: true, weight: 1.5, reward: () => 'Win: pick 1 tool' },
+  shop:      { name: 'Shop',           weight: 1.2, reward: () => 'No fight. Spend coins on a trait and tools.' },
+  chance:    { name: 'Wheel of Chance', weight: 1.2, reward: () => 'No fight. Spin for a buff, or a curse.' },
+  sacrifice: { name: 'Altar',          weight: 1.2, reward: () => 'No fight. Give something up to gain something else.' },
+  boss:      { name: 'Boss',           fight: true, weight: 0,   reward: () => 'Win: pick 2 traits and 60 coins' },
 };
-const WIN_COINS = 10;
+const WIN_COINS = 10, BOSS_EVERY = 10, BOSS_COINS = 60;
 function bountyCoins(fights) { return 35 + 5 * fights; }
-function rollRoutes(fights, rand, noShop) {
-  const pool = ['stat', 'bounty', 'tool'].concat(noShop ? [] : ['shop']);
-  return ['trait'].concat(sample(pool, 2, rand)).map(type => type === 'shop' ? { type } : { type, rival: makeRival(fights, rand) });
+function isBossStage(stage) { return stage % BOSS_EVERY === 0; }
+function rollRoutes(nextStage, fights, rand, lastType) {
+  // Which boss waits is random, and the route card shows it before you commit.
+  if (isBossStage(nextStage)) return [{ type: 'boss', rival: makeBoss(BOSS_IDS[Math.floor(rand() * BOSS_IDS.length)], fights) }];
+  const types = Object.keys(ROUTES).filter(k => ROUTES[k].weight > 0 && !(k === lastType && !ROUTES[k].fight));
+  let pick;
+  do {
+    pick = []; const pool = types.slice();
+    while (pick.length < 3) {
+      const total = pool.reduce((n, k) => n + ROUTES[k].weight, 0); let r = rand() * total;
+      const k = pool.find(k => (r -= ROUTES[k].weight) < 0) || pool[pool.length - 1];
+      pick.push(k); pool.splice(pool.indexOf(k), 1);
+    }
+  } while (!pick.some(k => ROUTES[k].fight));
+  return pick.map(type => ROUTES[type].fight ? { type, rival: makeRival(fights, rand) } : { type });
 }
-function traitPrice(level) { return 40 + 10 * level; }
+// Shop prices rise as the run goes on, like bounties do. Refreshing costs more each time in the same visit.
+function priceScale(fights) { return 1 + 0.1 * fights; }
+function toolPrice(id, fights) { return Math.round(TOOLS[id].price * priceScale(fights)); }
+function traitPrice(level, fights) { return Math.round((60 + 15 * level) * priceScale(fights)); }
+function refreshPrice(fights, n) { return Math.round((10 + 2 * fights) * (1 + n)); }
 //</sim>
 
 // ---------- Game state and UI ----------
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d');
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const COL = { blood: '#a3123a', poison: '#9be564', you: '#ff6b4a', rival: '#36d6c3', gold: '#ffd23f', ink: '#f3efff', line: '#3a3680', bg: '#17153b', ice: '#bfe9ff', muted: '#a8a3d6' };
+const COL = { blood: '#a3123a', poison: '#9be564', you: '#ff6b4a', rival: '#36d6c3', gold: '#ffd23f', ink: '#f3efff', line: '#3a3680', bg: '#17153b', ice: '#bfe9ff', muted: '#a8a3d6', stone: '#7d78b8', slime: '#5fd99a' };
 
 // G is plain JSON so a run survives the page being republished.
 let G = { phase: 'title', best: 0 };
-let fight = null, speedMult = 1, acc = 0, last = 0, shake = 0;
-let particles = [], floats = [], trails = [[], []];
+let fight = null, speedMult = 1, acc = 0, last = 0, shake = 0, wheelTimer = 0;
+let particles = [], floats = [], trails = {};
 const keys = {}; let pointer = null;
 
 function loadBest() { try { return +localStorage.getItem('circleBrawlBest') || 0; } catch (e) { return 0; } }
 function saveBest(n) { try { localStorage.setItem('circleBrawlBest', String(n)); } catch (e) {} }
 
-function me() { return { cls: G.cls, stats: G.stats, traits: G.build }; }
+function me() { return { cls: G.cls, stats: G.stats, traits: G.build, mods: G.mods, next: G.next }; }
 function baseSpec(cls) { return { cls, stats: CLASSES[cls].base, traits: {} }; }
-function resetFx() { trails = [[], []]; particles = []; floats = []; acc = 0; }
-function previewFight() { fight = createFight(me(), G.node.rival, 1); fight.over = true; resetFx(); }
+// The rival as it will fight: a Wheel of Chance curse can make it tougher.
+function rivalSpec() {
+  const r = G.node.rival;
+  return G.next && G.next.rivalHp ? { ...r, stats: { ...r.stats, hp: Math.round(r.stats.hp * G.next.rivalHp) } } : r;
+}
+function resetFx() { trails = {}; particles = []; floats = []; acc = 0; }
+function previewFight() { fight = createFight(me(), rivalSpec(), 1); fight.over = true; resetFx(); }
 
 const overlay = $('overlay');
 function showOverlay(html, cls) { overlay.className = 'overlay' + (cls ? ' ' + cls : ''); overlay.innerHTML = `<div class="inner">${html}</div>`; overlay.hidden = false; overlay.scrollTop = 0; }
+
+// ---------- Wheel of Chance and Altar ----------
+// Wheel slices alternate between blessings and curses. "next" effects last for the next fight only.
+const WHEEL = ['dmgUp', 'spdDown', 'coins', 'nextHurt', 'nextDmg', 'defDown', 'hpUp', 'nextRival', 'jackpot', 'coinsDown'];
+const GOOD = { dmgUp: 1, coins: 1, nextDmg: 1, hpUp: 1, jackpot: 1 };
+function wheelCoins(gain) { return Math.round((gain ? 40 : 30) * priceScale(G.fights)); }
+function applyWheel(id) {
+  const up = CLASSES[G.cls].up;
+  if (id === 'dmgUp') G.stats.dmg += up.dmg;
+  else if (id === 'hpUp') G.stats.hp += 20;
+  else if (id === 'coins') G.coins += wheelCoins(true);
+  else if (id === 'nextDmg') G.next.dmg = 1.4;
+  else if (id === 'jackpot') G.picks = 1;
+  else if (id === 'spdDown') G.stats.spd = Math.max(15, G.stats.spd - 4);
+  else if (id === 'defDown') G.stats.def = Math.max(0, G.stats.def - 5);
+  else if (id === 'nextHurt') G.next.hpFrac = 0.8;
+  else if (id === 'nextRival') G.next.rivalHp = 1.3;
+  else if (id === 'coinsDown') G.coins = Math.max(0, G.coins - wheelCoins(false));
+}
+// Altar bargains: give something up to get something else. Some trade stats, some change how your class's ability works.
+const ALTAR = {
+  glass:      { apply: () => { G.stats.dmg += 2 * CLASSES[G.cls].up.dmg; G.stats.hp = Math.max(30, G.stats.hp - 20); } },
+  tank:       { apply: () => { G.stats.hp += 30; G.stats.spd = Math.max(15, G.stats.spd - 4); } },
+  armor:      { apply: () => { G.stats.def = Math.min(60, G.stats.def + 10); G.stats.dmg = Math.max(1, G.stats.dmg - CLASSES[G.cls].up.dmg); }, ok: () => G.stats.def < 60 },
+  swift:      { apply: () => { G.stats.spd += 6; G.stats.def = Math.max(0, G.stats.def - 5); }, ok: () => G.stats.def >= 5 },
+  bigBlade:   { cls: 'knight',  mods: { swordSize: 1.25, spin: 0.75 } },
+  fastBlade:  { cls: 'knight',  mods: { spin: 1.3, swordSize: 0.8 } },
+  heavyArrow: { cls: 'archer',  mods: { arrowDmg: 1.35, fireRate: 0.75 } },
+  quickDraw:  { cls: 'archer',  mods: { fireRate: 1.3, arrowDmg: 0.75 } },
+  longSpikes: { cls: 'spike',   mods: { contactDmg: 1.35 }, apply: () => { G.stats.hp = Math.max(30, G.stats.hp - 15); } },
+  venom:      { cls: 'spike',   mods: { poison: 1.6, contactDmg: 0.8 }, ok: () => G.build.poison },
+  deepFangs:  { cls: 'vampire', mods: { biteDmg: 1.3, leech: 0.6 } },
+  leech:      { cls: 'vampire', mods: { leech: 1.6, biteDmg: 0.8 } },
+};
+function rollAltar() {
+  const fits = id => (!ALTAR[id].cls || ALTAR[id].cls === G.cls) && (!ALTAR[id].ok || ALTAR[id].ok());
+  const mine = Object.keys(ALTAR).filter(id => ALTAR[id].cls && fits(id)), general = Object.keys(ALTAR).filter(id => !ALTAR[id].cls && fits(id));
+  const offers = sample(mine, 1, Math.random);
+  return offers.concat(sample(general.concat(mine.filter(id => !offers.includes(id))), 3 - offers.length, Math.random));
+}
+function takeBargain(id) {
+  const b = ALTAR[id];
+  if (b.apply) b.apply();
+  if (b.mods) for (const k in b.mods) G.mods[k] = +((G.mods[k] || 1) * b.mods[k]).toFixed(3);
+  G.bargains[id] = (G.bargains[id] || 0) + 1;
+}
+
 // ---------- Language ----------
 // English text lives with the game data above. This table holds the Chinese for the same ids, plus all interface text in both languages.
 const ZH = {
@@ -668,18 +915,22 @@ const ZH = {
     archer:  { name: '弓箭手', ability: '每 5 秒沿直线射出一支箭，瞄准对手前进的方向。伤害为中到高。' },
     spike:   { name: '尖刺',   ability: '全身长满尖刺，每次与对手碰撞都会造成伤害。' },
     vampire: { name: '吸血鬼', ability: '碰到对手后咬住不放，在 2 秒内撕咬 3 次，并按造成伤害的 30% 回复生命。被咬住的骑士无法挥剑。' },
+    slime:   { name: '史莱姆王', ability: '巨大而缓慢的史莱姆，碰到就会受伤。被打倒后会分裂成 3 个更小更快的史莱姆，它们还会再分裂一次。' },
+    wall:    { name: '长城',   ability: '坐镇更大场地中央的堡垒。一枚手里剑绕着它旋转，每 8 秒还会发出一圈冲击波扫过整个场地，造成伤害并把你击退。' },
   },
   fx: {
     swords:   { name: '双剑',     desc: s => `携带 ${s + 1} 把剑，每把造成 ${Math.round(SWORD_SHARE[s] * 100)}% 伤害。` },
-    spin:     { name: '疾风剑刃', desc: s => `剑的旋转速度提高 ${40 * s}%。` },
+    spin:     { name: '疾风剑刃', desc: s => `剑的旋转速度提高 ${40 * s}%。不能与巨剑同时选择。` },
     shield:   { name: '护盾',     desc: s => `每 ${SHIELD_CD[s]} 秒抵挡一次伤害。` },
-    reach:    { name: '巨剑',     desc: s => `剑变大 ${30 * s}%。` },
+    reach:    { name: '巨剑',     desc: s => `剑变大 ${30 * s}%。不能与疾风剑刃同时选择。` },
     cleave:   { name: '回旋斩',   desc: s => `对手进入攻击范围时，挥出一把巨剑横扫该范围，造成 ${Math.round(CLEAVE_MULT[s] * 100)}% 伤害，并把对手沿挥砍方向击飞。冷却 ${CLEAVE_CD[s]} 秒。` },
+    charge:   { name: '冲锋',     desc: s => `按“冲锋”按钮或空格键，径直走向对手，碰到对手之前不受任何伤害。冷却 ${CHARGE_CD[s]} 秒。` },
     rapid:    { name: '速射',     desc: s => `每 ${SHOOT_EVERY[s]} 秒射一箭，原为 5 秒。` },
     stun:     { name: '眩晕箭',   desc: s => `每支箭有 ${Math.round(STUN_CHANCE[s] * 100)}% 的几率是发光的眩晕箭：射出后的 ${STUN_HOMING} 秒内会转向对手，命中时使其眩晕 ${STUN_SECS} 秒。被眩晕的对手在 ${STUN_IMMUNE} 秒内不会再次被眩晕。` },
     kick:     { name: '踢击',     desc: s => `对手靠近时将其踢飞，造成 ${Math.round(KICK_MULT[s] * 100)}% 伤害。冷却 ${KICK_CD[s]} 秒。` },
     double:   { name: '连射',     desc: s => `每次射击有 ${Math.round(DOUBLE[s] * 100)}% 的几率再射出一支箭。` },
     control:  { name: '自由操控', desc: s => `用 WASD 或方向键操控你的圆球，也可以按住场地来引导方向。${s > 1 ? `速度 +${15 * (s - 1)}%。` : ''}` },
+    arc:      { name: '箭雨',     desc: s => `按“箭雨”按钮或空格键，呈扇形射出 ${VOLLEY_ARROWS[s]} 支箭。第一支命中目标的箭造成 ${Math.round(VOLLEY_FIRST[s] * 100)}% 伤害，其余的造成 ${Math.round(VOLLEY_REPEAT * 100)}%。每支箭都可能是眩晕箭。每场战斗可用 ${VOLLEY_USES} 次。` },
     poison:   { name: '毒刺',     desc: s => `碰撞会让对手中毒，在 ${POISON_SECS} 秒内每秒受到 ${POISON[s]} 点伤害。毒伤不受你的伤害属性和对手防御的影响。` },
     grab:     { name: '钩索',     desc: s => `每 ${GRAB_CD[s]} 秒向对手射出一条绳索。命中后会把对手拉向你，并使其沉默 ${SILENCE[s]} 秒：无法攻击，也无法使用技能。` },
     stings:   { name: '墙刺',     desc: s => `撞墙时会在墙上留下一根刺。对手碰到后受到 ${Math.round(STING_MULT[s] * 100)}% 伤害，这根刺随即消失。` },
@@ -699,61 +950,96 @@ const ZH = {
     barrier: { name: '屏障',   desc: '2.5 秒内不受任何伤害。' },
   },
   routes: {
-    trait:  { name: '切磋',   reward: () => '获胜：选择 1 个特性' },
-    stat:   { name: '训练',   reward: () => '获胜：从 2 项随机属性中提升 1 项' },
-    bounty: { name: '悬赏',   reward: f => `获胜：${bountyCoins(f)} 金币` },
-    tool:   { name: '军械库', reward: () => '获胜：选择 1 件道具' },
-    shop:   { name: '商店',   reward: () => '没有战斗。用金币购买特性和道具。' },
+    trait:     { name: '切磋',     reward: () => '获胜：选择 1 个特性' },
+    stat:      { name: '训练',     reward: () => '获胜：从 2 项随机属性中提升 1 项' },
+    bounty:    { name: '悬赏',     reward: f => `获胜：${bountyCoins(f)} 金币` },
+    tool:      { name: '军械库',   reward: () => '获胜：选择 1 件道具' },
+    shop:      { name: '商店',     reward: () => '没有战斗。用金币购买特性和道具。' },
+    chance:    { name: '命运之轮', reward: () => '没有战斗。转动轮盘，可能得到增益，也可能遭到诅咒。' },
+    sacrifice: { name: '祭坛',     reward: () => '没有战斗。放弃一样东西，换取另一样。' },
+    boss:      { name: '首领',     reward: () => `获胜：选择 2 个特性，并获得 ${BOSS_COINS} 金币` },
   },
   stats: { hp: '生命上限', dmg: '伤害', def: '防御', spd: '速度' },
-  floats: { 'BLOCK': '格挡', 'CLEAVE': '回旋斩', 'KICK': '踢击', 'STUN': '眩晕', 'GRAB': '钩住', 'MISS': '未命中', 'BAT FORM': '蝙蝠形态', 'BLOOD POOL': '血池', 'SPIKE SHOT': '尖刺齐射', 'SILENCED': '沉默', 'RAGE': '狂怒', 'FROZEN': '冰冻', 'BARRIER': '屏障' },
+  floats: { 'BLOCK': '格挡', 'CLEAVE': '回旋斩', 'KICK': '踢击', 'STUN': '眩晕', 'GRAB': '钩住', 'MISS': '未命中', 'BAT FORM': '蝙蝠形态', 'BLOOD POOL': '血池', 'SPIKE SHOT': '尖刺齐射', 'SILENCED': '沉默', 'RAGE': '狂怒', 'FROZEN': '冰冻', 'BARRIER': '屏障', 'CHARGE': '冲锋', 'VOLLEY': '箭雨', 'SPLIT': '分裂' },
 };
 const UI = {
   en: {
-    brand: 'Circle <span>Brawl</span>', logo: 'Circle<br><span>Brawl</span>', langBtn: '中文', arena: 'Arena where the two circles fight',
+    brand: 'Circle <span>Brawl</span>', logo: 'Circle<br><span>Brawl</span>', langBtn: '中文', arena: 'Arena where the circles fight',
     stage: 'Stage', coins: 'Coins', best: 'Best', speed: 'Fight speed', newRun: 'New run', yourCircle: 'Your circle', rivalCircle: 'Rival circle',
     rules: 'Pick a circle. Stack upgrades. Then sit back and watch the chaos. One loss ends your run, so build smart.',
-    you: 'You', rival: 'Rival', tag: (who, cls) => `${who} · ${cls}`, hp: 'HP', damage: 'Damage', defense: 'Defense', speedStat: 'Speed',
+    you: 'You', rival: 'Rival', boss: 'Boss', tag: (who, cls) => `${who} · ${cls}`, hp: 'HP', damage: 'Damage', defense: 'Defense', speedStat: 'Speed',
     tools: 'Tools', noTools: 'None. Win an Armory fight or visit a Shop.', slots: (n, m) => `${n}/${m} traits`,
     noTraitsYet: 'No traits yet.', noTraits: 'No traits.', pressPlay: 'Press Play and choose a Knight, an Archer, a Spike or a Vampire.',
-    pickRouteHint: 'Pick a route to meet your next rival.', rivalsAre: 'Rivals are Knights, Archers, Spikes or Vampires with random traits.',
+    pickRouteHint: 'Pick a route to meet your next rival.', rivalsAre: 'Rivals are Knights, Archers, Spikes or Vampires with random traits. Every 10th stage is a boss.',
     withTraits: list => `with ${list}`, withNone: 'with no traits', sep: ', ',
     play: 'Play', chooseCircle: 'Choose your circle', chooseSub: 'You can learn up to 3 of its traits during a run.', traitsLabel: list => `Traits: ${list}`,
-    pickTrait: 'Pick a trait', pickFull: 'You hold 3 traits, so these are upgrades.', pickSlots: n => `New traits fill a slot. You have ${n} left.`, level: (a, b) => `Level ${a} → ${b}`,
+    pickTrait: 'Pick a trait', pickFull: 'You hold 3 traits, so these are upgrades.', pickSlots: n => `New traits fill a slot. You have ${n} left.`, picksLeft: n => `${n} picks left.`, level: (a, b) => `Level ${a} → ${b}`,
     pickTool: 'Pick a tool', toolSub: 'Tools are single use. Tap one during a fight.', trainTitle: 'Training pays off', trainSub: 'Raise one stat.',
-    routeTitle: 'Choose your route', coinsLine: n => `You have ${n} coins.`, foe: (cls, phrase) => `vs ${cls} ${phrase}`,
-    shop: 'Shop', traitsH: 'Traits', toolsH: 'Tools', sold: 'Sold', price: n => `${n} coins`, leave: 'Leave shop',
+    routeTitle: 'Choose your route', bossAhead: 'A boss blocks the way. There is no other path.', coinsLine: n => `You have ${n} coins.`, foe: (cls, phrase) => `vs ${cls} ${phrase}`,
+    shop: 'Shop', traitH: 'Trait', toolsH: 'Tools', soldOut: 'Sold out', price: n => `${n} coins`, leave: 'Leave shop', refresh: n => `Refresh: ${n} coins`, noTrait: 'Nothing new for your circle today.',
     stageTitle: (n, name) => `Stage ${n}: ${name}`, face: (id, cls, phrase) => `You face ${id === 'archer' ? 'an' : 'a'} ${cls} ${phrase}.`,
-    steerHint: 'Steer with WASD or the arrow keys, or hold on the arena.', activeHint: n => `Press the ${n} button or Space to use it. Once per fight.`, fight: 'Fight',
+    steerHint: 'Steer with WASD or the arrow keys, or hold on the arena.', activeHint: n => `Press the ${n} button or Space to use it.`, fight: 'Fight',
     koTitle: n => `Knocked out at stage ${n}`, koSub: (f, best) => `You won ${f} fight${f === 1 ? '' : 's'} this run. Best run: ${best}.`, again: 'Play again',
-    activeReady: n => `${n}: ready`, activeOn: n => `${n}: active`, activeDone: n => `${n}: used`, sudden: 'SUDDEN DEATH',
+    activeReady: n => `${n}: ready`, activeOn: n => `${n}: active`, activeDone: n => `${n}: used`, activeLeft: (n, k) => `${n}: ${k} left`, activeCd: (n, s) => `${n}: ${s}s`, sudden: 'SUDDEN DEATH',
+    nextH: 'Next fight', nextDmg: 'Deal +40% damage', nextHurt: 'Start with 20% less HP', nextRival: 'Rival has 30% more HP', bargainsH: 'Bargains',
+    wheelTitle: 'Wheel of Chance', wheelSub: 'Half the wheel helps you. Half of it hurts.', spin: 'Spin', continue: 'Continue',
+    wheelLabel: { dmgUp: '+Damage', spdDown: '−Speed', coins: '+Coins', nextHurt: 'Weakened', nextDmg: 'Fury', defDown: '−Defense', hpUp: '+HP', nextRival: 'Tough rival', jackpot: 'Jackpot', coinsDown: '−Coins' },
+    wheelResult: { dmgUp: () => `Damage +${CLASSES[G.cls].up.dmg}.`, hpUp: () => 'Max HP +20.', coins: () => `You found ${wheelCoins(true)} coins.`, nextDmg: () => 'Next fight, you deal 40% more damage.',
+      jackpot: () => 'Jackpot! Pick a trait.', spdDown: () => 'Speed −4.', defDown: () => 'Defense −5%.', nextHurt: () => 'Next fight, you start with 20% less HP.',
+      nextRival: () => 'Next fight, your rival has 30% more HP.', coinsDown: () => `You lost ${wheelCoins(false)} coins.` },
+    altarTitle: 'Altar', altarSub: 'Make one bargain, or walk away.', walkAway: 'Walk away', gain: 'Gain', lose: 'Lose',
+    altar: {
+      glass: ['Glass Edge', () => `Damage +${2 * CLASSES[G.cls].up.dmg}`, 'Max HP −20'], tank: ['Iron Hide', 'Max HP +30', 'Speed −4'],
+      armor: ['Steel Plate', 'Defense +10%', () => `Damage −${CLASSES[G.cls].up.dmg}`], swift: ['Lightfoot', 'Speed +6', 'Defense −5%'],
+      bigBlade: ['Heavy Blade', 'Swords 25% bigger', 'Swords spin 25% slower'], fastBlade: ['Quick Blade', 'Swords spin 30% faster', 'Swords 20% smaller'],
+      heavyArrow: ['Heavy Arrows', 'Arrows deal 35% more damage', 'Shoot 25% slower'], quickDraw: ['Quick Draw', 'Shoot 30% faster', 'Arrows deal 25% less damage'],
+      longSpikes: ['Long Spikes', 'Spikes deal 35% more damage', 'Max HP −15'], venom: ['Venom', 'Poison 60% stronger', 'Spikes deal 20% less damage'],
+      deepFangs: ['Deep Fangs', 'Bites deal 30% more damage', 'Heal 40% less'], leech: ['Leech', 'Heal 60% more', 'Bites deal 20% less damage'],
+    },
   },
   zh: {
-    brand: '圆球<span>乱斗</span>', logo: '圆球<br><span>乱斗</span>', langBtn: 'English', arena: '两个圆球对战的场地',
+    brand: '圆球<span>乱斗</span>', logo: '圆球<br><span>乱斗</span>', langBtn: 'English', arena: '圆球对战的场地',
     stage: '关卡', coins: '金币', best: '最佳', speed: '战斗速度', newRun: '重新开始', yourCircle: '你的圆球', rivalCircle: '对手的圆球',
     rules: '选一个圆球，叠加升级，然后坐看混战。输一场就出局，升级要选好。',
-    you: '你', rival: '对手', tag: (who, cls) => `${who} · ${cls}`, hp: '生命', damage: '伤害', defense: '防御', speedStat: '速度',
+    you: '你', rival: '对手', boss: '首领', tag: (who, cls) => `${who} · ${cls}`, hp: '生命', damage: '伤害', defense: '防御', speedStat: '速度',
     tools: '道具', noTools: '暂无。赢下军械库的战斗，或去商店购买。', slots: (n, m) => `${n}/${m} 个特性`,
     noTraitsYet: '还没有特性。', noTraits: '没有特性。', pressPlay: '点击“开始游戏”，选择骑士、弓箭手、尖刺或吸血鬼。',
-    pickRouteHint: '选择路线后就能看到下一个对手。', rivalsAre: '对手是带有随机特性的骑士、弓箭手、尖刺或吸血鬼。',
+    pickRouteHint: '选择路线后就能看到下一个对手。', rivalsAre: '对手是带有随机特性的骑士、弓箭手、尖刺或吸血鬼。每第 10 关是首领战。',
     withTraits: list => `拥有${list}`, withNone: '没有特性', sep: '、',
     play: '开始游戏', chooseCircle: '选择你的圆球', chooseSub: '一轮游戏中，最多可以学会它的 3 个特性。', traitsLabel: list => `特性：${list}`,
-    pickTrait: '选择一个特性', pickFull: '你已有 3 个特性，所以这些都是升级。', pickSlots: n => `新特性会占用一个栏位。你还剩 ${n} 个栏位。`, level: (a, b) => `等级 ${a} → ${b}`,
+    pickTrait: '选择一个特性', pickFull: '你已有 3 个特性，所以这些都是升级。', pickSlots: n => `新特性会占用一个栏位。你还剩 ${n} 个栏位。`, picksLeft: n => `还可以选 ${n} 次。`, level: (a, b) => `等级 ${a} → ${b}`,
     pickTool: '选择一件道具', toolSub: '道具只能用一次，战斗中点击即可使用。', trainTitle: '训练有了成果', trainSub: '提升一项属性。',
-    routeTitle: '选择路线', coinsLine: n => `你有 ${n} 金币。`, foe: (cls, phrase) => `对手：${cls}，${phrase}`,
-    shop: '商店', traitsH: '特性', toolsH: '道具', sold: '已售出', price: n => `${n} 金币`, leave: '离开商店',
+    routeTitle: '选择路线', bossAhead: '首领挡住了去路，没有别的路可走。', coinsLine: n => `你有 ${n} 金币。`, foe: (cls, phrase) => `对手：${cls}，${phrase}`,
+    shop: '商店', traitH: '特性', toolsH: '道具', soldOut: '已售罄', price: n => `${n} 金币`, leave: '离开商店', refresh: n => `刷新：${n} 金币`, noTrait: '今天没有适合你的新特性。',
     stageTitle: (n, name) => `第 ${n} 关：${name}`, face: (id, cls, phrase) => `你的对手是${cls}，${phrase}。`,
-    steerHint: '用 WASD 或方向键操控，也可以按住场地。', activeHint: n => `按“${n}”按钮或空格键使用，每场战斗限一次。`, fight: '开战',
+    steerHint: '用 WASD 或方向键操控，也可以按住场地。', activeHint: n => `按“${n}”按钮或空格键使用。`, fight: '开战',
     koTitle: n => `在第 ${n} 关被击败`, koSub: (f, best) => `本轮你赢了 ${f} 场战斗。最佳纪录：${best}。`, again: '再来一局',
-    activeReady: n => `${n}：就绪`, activeOn: n => `${n}：生效中`, activeDone: n => `${n}：已使用`, sudden: '决胜阶段',
+    activeReady: n => `${n}：就绪`, activeOn: n => `${n}：生效中`, activeDone: n => `${n}：已使用`, activeLeft: (n, k) => `${n}：剩 ${k} 次`, activeCd: (n, s) => `${n}：${s} 秒`, sudden: '决胜阶段',
+    nextH: '下一场战斗', nextDmg: '伤害 +40%', nextHurt: '开局生命减少 20%', nextRival: '对手生命 +30%', bargainsH: '交易',
+    wheelTitle: '命运之轮', wheelSub: '轮盘一半是好运，一半是厄运。', spin: '转动', continue: '继续',
+    wheelLabel: { dmgUp: '+伤害', spdDown: '−速度', coins: '+金币', nextHurt: '虚弱', nextDmg: '狂暴', defDown: '−防御', hpUp: '+生命', nextRival: '强敌', jackpot: '大奖', coinsDown: '−金币' },
+    wheelResult: { dmgUp: () => `伤害 +${CLASSES[G.cls].up.dmg}。`, hpUp: () => '生命上限 +20。', coins: () => `你捡到了 ${wheelCoins(true)} 金币。`, nextDmg: () => '下一场战斗，你的伤害提高 40%。',
+      jackpot: () => '大奖！选择一个特性。', spdDown: () => '速度 −4。', defDown: () => '防御 −5%。', nextHurt: () => '下一场战斗，你开局时生命减少 20%。',
+      nextRival: () => '下一场战斗，对手的生命提高 30%。', coinsDown: () => `你丢了 ${wheelCoins(false)} 金币。` },
+    altarTitle: '祭坛', altarSub: '做一笔交易，或者转身离开。', walkAway: '转身离开', gain: '获得', lose: '失去',
+    altar: {
+      glass: ['玻璃之刃', () => `伤害 +${2 * CLASSES[G.cls].up.dmg}`, '生命上限 −20'], tank: ['铁皮', '生命上限 +30', '速度 −4'],
+      armor: ['钢甲', '防御 +10%', () => `伤害 −${CLASSES[G.cls].up.dmg}`], swift: ['轻足', '速度 +6', '防御 −5%'],
+      bigBlade: ['重剑', '剑变大 25%', '剑的旋转慢 25%'], fastBlade: ['快剑', '剑的旋转快 30%', '剑变小 20%'],
+      heavyArrow: ['重箭', '箭的伤害提高 35%', '射速降低 25%'], quickDraw: ['快拔', '射速提高 30%', '箭的伤害降低 25%'],
+      longSpikes: ['长刺', '尖刺伤害提高 35%', '生命上限 −15'], venom: ['剧毒', '毒伤提高 60%', '尖刺伤害降低 20%'],
+      deepFangs: ['深牙', '撕咬伤害提高 30%', '回复减少 40%'], leech: ['水蛭', '回复提高 60%', '撕咬伤害降低 20%'],
+    },
   },
 };
 function loadLang() { try { const v = localStorage.getItem('circleBrawlLang'); if (v === 'en' || v === 'zh') return v; } catch (e) {} return 'en'; }
 let LANG = loadLang();
 const zh = () => LANG === 'zh';
 function t(key, ...args) { const v = UI[LANG][key]; return typeof v === 'function' ? v(...args) : v; }
-const cName = id => zh() ? ZH.classes[id].name : CLASSES[id].name;
-const cAbility = id => zh() ? ZH.classes[id].ability : CLASSES[id].ability;
+const val = v => typeof v === 'function' ? v() : v;
+const who = id => CLASSES[id] || BOSSES[id];
+const cName = id => zh() ? ZH.classes[id].name : who(id).name;
+const cAbility = id => zh() ? ZH.classes[id].ability : who(id).ability;
 const fxName = id => zh() ? ZH.fx[id].name : FX[id].name;
 const fxDesc = (id, s) => zh() ? ZH.fx[id].desc(s) : FX[id].desc(s);
 const toolName = id => zh() ? ZH.tools[id].name : TOOLS[id].name;
@@ -773,10 +1059,13 @@ function applyStatic() {
 // Switching language redraws the current screen with the same choices on it.
 function setLang(l) {
   LANG = l; try { localStorage.setItem('circleBrawlLang', l); } catch (e) {}
-  applyStatic(); renderHud();
+  applyStatic(); renderHud(); redraw();
+}
+function redraw() {
   const p = G.phase;
   if (p === 'title') titleOverlay(); else if (p === 'class') classOverlay(); else if (p === 'pick') showPick(true); else if (p === 'toolpick') showToolPick(true);
-  else if (p === 'statpick') showStatPick(true); else if (p === 'route') showRoute(true); else if (p === 'shop' && G.shop) showShop(); else if (p === 'ready') showReady(); else if (p === 'over') overOverlay();
+  else if (p === 'statpick') showStatPick(true); else if (p === 'route') showRoute(true); else if (p === 'shop' && G.shop) showShop(); else if (p === 'ready') showReady();
+  else if (p === 'over') overOverlay(); else if (p === 'chance') showChance(); else if (p === 'altar') showAltar();
 }
 $('lang').addEventListener('click', () => setLang(zh() ? 'en' : 'zh'));
 
@@ -802,14 +1091,27 @@ function showClassPick() {
   renderHud(); classOverlay();
 }
 function startRun(cls) {
-  G = { phase: 'ready', stage: 1, fights: 0, coins: 0, cls, stats: { ...CLASSES[cls].base }, build: {}, tools: {}, best: G.best, picks: 0, node: { type: 'trait', rival: makeRival(0, Math.random) }, routes: null, shop: null };
+  G = { phase: 'ready', stage: 1, fights: 0, coins: 0, cls, stats: { ...CLASSES[cls].base }, build: {}, tools: {}, mods: {}, next: {}, bargains: {}, best: G.best, picks: 0,
+    node: { type: 'trait', rival: makeRival(0, Math.random) }, routes: null, shop: null, lastType: null };
   showReady();
 }
 
-function sheet(spec, emptyText) {
-  const ids = Object.keys(spec.traits);
-  return statLine(spec.stats) + `<div class="ability">${cAbility(spec.cls)}</div>` +
-    (ids.length ? '<ul>' + ids.map(id => `<li><strong>${fxName(id)}${spec.traits[id] > 1 ? ' ×' + spec.traits[id] : ''}</strong><br>${fxDesc(id, spec.traits[id])}</li>`).join('') + '</ul>' : `<ul><li>${emptyText}</li></ul>`);
+function sheet(spec, emptyText, extra) {
+  const ids = Object.keys(spec.traits || {});
+  const list = spec.boss ? '' : ids.length ? '<ul>' + ids.map(id => `<li><strong>${fxName(id)}${spec.traits[id] > 1 ? ' ×' + spec.traits[id] : ''}</strong><br>${fxDesc(id, spec.traits[id])}</li>`).join('') + '</ul>' : `<ul><li>${emptyText}</li></ul>`;
+  return statLine(spec.stats) + `<div class="ability">${cAbility(spec.cls)}</div>` + list + (extra || '');
+}
+// Lasting bargains and one-fight effects, shown under your circle.
+function extras() {
+  let html = '';
+  const n = G.next || {}, lines = [];
+  if (n.dmg) lines.push(`<li class="good">${t('nextDmg')}</li>`);
+  if (n.hpFrac) lines.push(`<li class="bad">${t('nextHurt')}</li>`);
+  if (n.rivalHp) lines.push(`<li class="bad">${t('nextRival')}</li>`);
+  if (lines.length) html += `<h5>${t('nextH')}</h5><ul>${lines.join('')}</ul>`;
+  const bs = Object.keys(G.bargains || {});
+  if (bs.length) html += `<h5>${t('bargainsH')}</h5><ul>` + bs.map(id => { const a = t('altar')[id]; return `<li><strong>${a[0]}${G.bargains[id] > 1 ? ' ×' + G.bargains[id] : ''}</strong><br><span class="good">${val(a[1])}</span> · <span class="bad">${val(a[2])}</span></li>`; }).join('') + '</ul>';
+  return html;
 }
 function renderTools() {
   const ids = TOOL_IDS.filter(id => G.tools && G.tools[id] > 0);
@@ -821,15 +1123,21 @@ function renderTools() {
     : `<span>${t('noTools')}</span>`);
   updateActiveBtn();
 }
-// The active button (Blood Pool or Spike Shot) shows whether it is ready, running or spent.
+// The active button shows whether it is ready, running, cooling down, or spent.
 function activeOf(build) { return build && G.cls && ACTIVE[G.cls] && build[ACTIVE[G.cls]] ? ACTIVE[G.cls] : null; }
 function updateActiveBtn() {
   const btn = $('activeBtn'); if (!btn) return;
   const act = activeOf(G.build), name = fxName(act);
   const live = G.phase === 'fight' && fight && !fight.over, c = fight && fight.a;
-  const label = !live ? name : c.poolT > 0 ? t('activeOn', name) : c.activeUsed ? t('activeDone', name) : t('activeReady', name);
+  let label = name, usable = false;
+  if (live) {
+    if (c.poolT > 0 || c.chargeT > 0) label = t('activeOn', name);
+    else if (c.uses <= 0) label = t('activeDone', name);
+    else if (c.activeCd > 0 && c.uses === Infinity) label = t('activeCd', name, Math.ceil(c.activeCd));
+    else { label = c.uses !== Infinity && ACTIVE_USES[act](c.s(act)) > 1 ? t('activeLeft', name, c.uses) : t('activeReady', name); usable = c.activeCd <= 0; }
+  }
   if (btn.textContent !== label) btn.textContent = label;
-  btn.disabled = !(live && !c.activeUsed && c.silence <= 0 && c.frozen <= 0);
+  btn.disabled = !(live && usable && c.silence <= 0 && c.frozen <= 0);
 }
 function renderHud() {
   const inRun = !!G.cls;
@@ -837,21 +1145,21 @@ function renderHud() {
   $('coins').textContent = inRun ? G.coins : 0;
   $('best').textContent = G.best || 0;
   $('youName').textContent = inRun ? t('tag', t('you'), cName(G.cls)) : t('you');
-  const choosing = !inRun || G.phase === 'route' || G.phase === 'shop';
-  $('rivalName').textContent = choosing ? t('rival') : t('tag', t('rival'), cName(G.node.rival.cls));
+  const choosing = !inRun || ['route', 'shop', 'chance', 'altar'].includes(G.phase), rv = inRun && G.node.rival;
+  $('rivalName').textContent = choosing ? t('rival') : t('tag', rv.boss ? t('boss') : t('rival'), cName(rv.cls));
   $('slots').textContent = inRun ? t('slots', Object.keys(G.build).length, MAX_TRAITS) : '';
-  $('buildYou').innerHTML = inRun ? sheet(me(), t('noTraitsYet')) : `<div class="none">${t('pressPlay')}</div>`;
-  $('buildRival').innerHTML = choosing ? `<div class="none">${inRun ? t('pickRouteHint') : t('rivalsAre')}</div>` : sheet(G.node.rival, t('noTraits'));
+  $('buildYou').innerHTML = inRun ? sheet(me(), t('noTraitsYet'), extras()) : `<div class="none">${t('pressPlay')}</div>`;
+  $('buildRival').innerHTML = choosing ? `<div class="none">${inRun ? t('pickRouteHint') : t('rivalsAre')}</div>` : sheet(rivalSpec(), t('noTraits'));
   renderTools(); renderBars();
 }
 function renderBars() {
   if (!fight) return;
-  const { a, b } = fight, demo = fight.demo;
+  const a = fight.a, demo = fight.demo, [now, total] = foeHealth(fight);
   $('hpYou').textContent = demo ? '–' : `${Math.ceil(a.hp)} / ${a.maxHp}`;
-  $('hpRival').textContent = demo ? '–' : `${Math.ceil(b.hp)} / ${b.maxHp}`;
+  $('hpRival').textContent = demo ? '–' : `${Math.ceil(now)} / ${total}`;
   $('fillYou').style.width = (100 * Math.max(0, a.hp) / a.maxHp) + '%';
-  $('fillRival').style.width = (100 * Math.max(0, b.hp) / b.maxHp) + '%';
-  $('arena').classList.toggle('sudden', G.phase === 'fight' && fight.t > SUDDEN_AT);
+  $('fillRival').style.width = (100 * Math.max(0, now) / total) + '%';
+  $('arena').classList.toggle('sudden', G.phase === 'fight' && fight.t > fight.suddenAt);
 }
 
 // Reward screens keep their rolled choices in G, so redrawing one (a language switch, a reload) never rerolls it.
@@ -865,7 +1173,7 @@ function showPick(keep) {
     const have = G.build[id] || 0;
     return `<button class="card" data-pick="${id}"><span class="name">${fxName(id)}</span>${have ? `<span class="lvl">${t('level', have, have + 1)}</span>` : ''}<span class="desc">${fxDesc(id, have + 1)}</span></button>`;
   }).join('');
-  showOverlay(`<h2>${t('pickTrait')}</h2><p>${full ? t('pickFull') : t('pickSlots', MAX_TRAITS - Object.keys(G.build).length)}</p><div class="cards">${cards}</div>`);
+  showOverlay(`<h2>${t('pickTrait')}</h2><p>${G.picks > 1 ? t('picksLeft', G.picks) + ' ' : ''}${full ? t('pickFull') : t('pickSlots', MAX_TRAITS - Object.keys(G.build).length)}</p><div class="cards">${cards}</div>`);
 }
 function showToolPick(keep) {
   G.phase = 'toolpick';
@@ -886,41 +1194,97 @@ function showStatPick(keep) {
 
 function showRoute(keep) {
   G.phase = 'route';
-  if (!keep || !G.routes) G.routes = rollRoutes(G.fights, Math.random, G.justShopped);
+  if (!keep || !G.routes) G.routes = rollRoutes(G.stage + 1, G.fights, Math.random, G.lastType);
   renderHud();
+  const boss = G.routes.length === 1 && G.routes[0].type === 'boss';
   const cards = G.routes.map((r, i) => {
-    const foe = r.type === 'shop' ? '' : `<span class="foe">${t('foe', cName(r.rival.cls), traitPhrase(r.rival.traits))}</span>`;
-    return `<button class="card" data-route="${i}"><span class="name">${routeName(r.type)}</span><span class="desc">${routeReward(r.type, G.fights)}</span>${foe}</button>`;
+    const foe = !r.rival ? '' : r.rival.boss ? `<span class="foe">${cAbility(r.rival.cls)}</span>` : `<span class="foe">${t('foe', cName(r.rival.cls), traitPhrase(r.rival.traits))}</span>`;
+    const name = r.type === 'boss' ? `${routeName('boss')}: ${cName(r.rival.cls)}` : routeName(r.type);
+    return `<button class="card${r.type === 'boss' ? ' boss' : ''}" data-route="${i}"><span class="name">${name}</span><span class="desc">${routeReward(r.type, G.fights)}</span>${foe}</button>`;
   }).join('');
-  showOverlay(`<h2>${t('routeTitle')}</h2><p>${t('coinsLine', G.coins)}</p><div class="cards">${cards}</div>`);
+  showOverlay(`<h2>${t('routeTitle')}</h2><p>${boss ? t('bossAhead') : t('coinsLine', G.coins)}</p><div class="cards${boss ? ' one' : ''}">${cards}</div>`);
 }
 function takeRoute(i) {
   const r = G.routes[i]; if (!r) return;
-  G.stage++; G.routes = null;
-  if (r.type === 'shop') { G.justShopped = true; G.shop = { traits: rollChoices(G.cls, G.build, Math.random), tools: sample(TOOL_IDS, 3, Math.random), sold: [] }; showShop(); }
-  else { G.justShopped = false; G.node = r; showReady(); }
+  G.stage++; G.routes = null; G.lastType = r.type;
+  if (r.type === 'shop') { G.shop = newShop(0); showShop(); }
+  else if (r.type === 'chance') { G.wheel = { idx: -1 }; showChance(); }
+  else if (r.type === 'sacrifice') { G.altar = rollAltar(); showAltar(); }
+  else { G.node = r; showReady(); }
+}
+
+// Shop: one trait at a premium, three tools that sell out, and a refresh that costs more each time.
+function newShop(refreshes) {
+  const open = openTraits(G.cls, G.build, false);
+  return { trait: sample(open, 1, Math.random)[0] || null, tools: sample(TOOL_IDS, 3, Math.random), bought: [], refreshes };
 }
 function showShop() {
   G.phase = 'shop'; renderHud();
-  const s = G.shop, open = openTraits(G.cls, G.build, false);
-  const tc = s.traits.map(id => {
-    const have = G.build[id] || 0, price = traitPrice(have), sold = s.sold.includes(id) || !open.includes(id);
-    return `<button class="card" data-buytrait="${id}" ${sold || G.coins < price ? 'disabled' : ''}><span class="name">${fxName(id)}</span>${have ? `<span class="lvl">${t('level', have, Math.min(maxLv(id), have + 1))}</span>` : ''}<span class="desc">${fxDesc(id, Math.min(maxLv(id), have + 1))}</span><span class="price">${sold ? t('sold') : t('price', price)}</span></button>`;
-  }).join('');
-  const oc = s.tools.map(id => `<button class="card" data-buytool="${id}" ${G.coins < TOOLS[id].price ? 'disabled' : ''}><span class="name">${toolName(id)}</span><span class="desc">${toolDesc(id)}</span><span class="price">${t('price', TOOLS[id].price)}</span></button>`).join('');
-  showOverlay(`<h2>${t('shop')}</h2><p>${t('coinsLine', G.coins)}</p>${tc ? `<h4>${t('traitsH')}</h4><div class="cards">${tc}</div>` : ''}<h4>${t('toolsH')}</h4><div class="cards">${oc}</div><button class="big" id="leave">${t('leave')}</button>`);
+  const s = G.shop, id = s.trait, f = G.fights;
+  let tc = `<p>${t('noTrait')}</p>`;
+  if (id) {
+    const have = G.build[id] || 0, price = traitPrice(have, f), sold = s.bought.includes('trait');
+    tc = `<div class="cards one"><button class="card" data-buytrait="${id}" ${sold || G.coins < price ? 'disabled' : ''}><span class="name">${fxName(id)}</span>${have ? `<span class="lvl">${t('level', have, have + 1)}</span>` : ''}<span class="desc">${fxDesc(id, have + 1)}</span><span class="price">${sold ? t('soldOut') : t('price', price)}</span></button></div>`;
+  }
+  const oc = s.tools.map(tid => { const sold = s.bought.includes(tid), price = toolPrice(tid, f);
+    return `<button class="card" data-buytool="${tid}" ${sold || G.coins < price ? 'disabled' : ''}><span class="name">${toolName(tid)}</span><span class="desc">${toolDesc(tid)}</span><span class="price">${sold ? t('soldOut') : t('price', price)}</span></button>`; }).join('');
+  const rp = refreshPrice(f, s.refreshes);
+  showOverlay(`<h2>${t('shop')}</h2><p>${t('coinsLine', G.coins)}</p><h4>${t('traitH')}</h4>${tc}<h4>${t('toolsH')}</h4><div class="cards">${oc}</div>
+    <div class="btnrow"><button class="chip" id="refresh" ${G.coins < rp ? 'disabled' : ''}>${t('refresh', rp)}</button><button class="big" id="leave">${t('leave')}</button></div>`);
 }
+
+// Wheel of Chance: the result is decided the moment you spin, then the wheel animates to it.
+function wheelSvg() {
+  const n = WHEEL.length, R = 100, lab = t('wheelLabel');
+  let g = '';
+  WHEEL.forEach((id, i) => {
+    const a0 = (i / n) * 2 * Math.PI - Math.PI / 2, a1 = ((i + 1) / n) * 2 * Math.PI - Math.PI / 2, am = (a0 + a1) / 2;
+    g += `<path d="M0 0 L${(Math.cos(a0) * R).toFixed(1)} ${(Math.sin(a0) * R).toFixed(1)} A${R} ${R} 0 0 1 ${(Math.cos(a1) * R).toFixed(1)} ${(Math.sin(a1) * R).toFixed(1)}Z" fill="${GOOD[id] ? (i % 4 === 0 ? '#2a6f68' : '#2f7d5b') : (i % 4 === 1 ? '#8a3346' : '#7a2f52')}" stroke="#17153b" stroke-width="2"/>`;
+    // Labels run along the slice, flipped on the left half so none read upside down.
+    const deg = am * 180 / Math.PI, flip = Math.cos(am) < 0;
+    g += `<text transform="rotate(${deg.toFixed(1)}) translate(60 0)${flip ? ' rotate(180)' : ''}" text-anchor="middle" dominant-baseline="middle" font-size="${zh() ? 12 : 10.5}" font-weight="700" fill="#f3efff">${lab[id]}</text>`;
+  });
+  return `<svg viewBox="-104 -104 208 208" aria-hidden="true"><g>${g}</g><circle r="14" fill="#ffd23f" stroke="#17153b" stroke-width="3"/></svg>`;
+}
+function showChance() {
+  G.phase = 'chance'; renderHud();
+  const w = G.wheel, done = w.idx >= 0, rot = done ? 360 * 6 - (w.idx * 36 + 18) : 0;
+  const result = done ? `<p class="result ${GOOD[WHEEL[w.idx]] ? 'good' : 'bad'}">${t('wheelResult')[WHEEL[w.idx]]()}</p>` : '';
+  showOverlay(`<h2>${t('wheelTitle')}</h2><p>${t('wheelSub')}</p><div class="wheel"><div class="pointer"></div><div class="disc" id="disc" style="transform: rotate(${rot}deg)">${wheelSvg()}</div></div>
+    <div id="wheelOut">${result}</div><div class="btnrow">${done ? `<button class="big" id="wheelGo">${t('continue')}</button>` : `<button class="big" id="spin">${t('spin')}</button>`}</div>`);
+}
+function spinWheel() {
+  const idx = Math.floor(Math.random() * WHEEL.length);
+  G.wheel = { idx }; applyWheel(WHEEL[idx]);
+  const disc = $('disc'), btn = $('spin');
+  if (btn) btn.disabled = true;
+  if (reduceMotion || !disc) { showChance(); return; }
+  disc.style.transition = 'transform 3.2s cubic-bezier(0.15, 0.7, 0.2, 1)';
+  requestAnimationFrame(() => { disc.style.transform = `rotate(${360 * 6 - (idx * 36 + 18)}deg)`; });
+  clearTimeout(wheelTimer); wheelTimer = setTimeout(() => { if (G.phase === 'chance') showChance(); }, 3300);
+}
+function leaveChance() { const picks = G.picks > 0; G.wheel = null; renderHud(); if (picks) showPick(); else showRoute(false); }
+
+function showAltar() {
+  G.phase = 'altar'; renderHud();
+  const A = t('altar');
+  const cards = G.altar.map(id => `<button class="card" data-bargain="${id}"><span class="name">${A[id][0]}</span><span class="desc good">${t('gain')}: ${val(A[id][1])}</span><span class="desc bad">${t('lose')}: ${val(A[id][2])}</span></button>`).join('');
+  showOverlay(`<h2>${t('altarTitle')}</h2><p>${t('altarSub')}</p><div class="cards">${cards}</div><div class="btnrow"><button class="chip" id="walk">${t('walkAway')}</button></div>`);
+}
+
 function showReady() {
   G.phase = 'ready';
   previewFight(); renderHud();
   const rv = G.node.rival;
-  showOverlay(`<h2>${t('stageTitle', G.stage, routeName(G.node.type))}</h2><p>${t('face', rv.cls, cName(rv.cls), traitPhrase(rv.traits))}</p>${G.build.control ? `<p>${t('steerHint')}</p>` : ''}${activeOf(G.build) ? `<p>${t('activeHint', fxName(activeOf(G.build)))}</p>` : ''}<button class="big" id="go">${t('fight')}</button>`);
+  const line = rv.boss ? `<p>${cName(rv.cls)}. ${cAbility(rv.cls)}</p>` : `<p>${t('face', rv.cls, cName(rv.cls), traitPhrase(rv.traits))}</p>`;
+  showOverlay(`<h2>${t('stageTitle', G.stage, rv.boss ? routeName('boss') : routeName(G.node.type))}</h2>${line}${G.build.control ? `<p>${t('steerHint')}</p>` : ''}${activeOf(G.build) ? `<p>${t('activeHint', fxName(activeOf(G.build)))}</p>` : ''}<button class="big" id="go">${t('fight')}</button>`);
   $('go').focus();
 }
 function startFight() {
   G.phase = 'fight';
-  fight = createFight(me(), G.node.rival, (Math.random() * 2 ** 31) | 0); resetFx();
-  overlay.hidden = true; renderTools();
+  fight = createFight(me(), rivalSpec(), (Math.random() * 2 ** 31) | 0); resetFx();
+  G.next = {};
+  overlay.hidden = true; renderHud();
 }
 function overOverlay() { showOverlay(`<h2>${t('koTitle', G.stage)}</h2><p>${t('koSub', G.fights, G.best)}</p><button class="big" id="again">${t('again')}</button>`); $('again').focus(); }
 function endFight() {
@@ -929,8 +1293,8 @@ function endFight() {
   if (fight.winner === 0) {
     const type = G.node.type;
     G.fights++; G.best = Math.max(G.best, G.fights); saveBest(G.best);
-    G.coins += WIN_COINS + (type === 'bounty' ? bountyCoins(G.fights - 1) : 0);
-    G.picks = type === 'trait' ? 1 : 0;
+    G.coins += WIN_COINS + (type === 'bounty' ? bountyCoins(G.fights - 1) : 0) + (type === 'boss' ? BOSS_COINS : 0);
+    G.picks = type === 'trait' ? 1 : type === 'boss' ? 2 : 0;
     G.choices = G.toolChoices = G.statChoices = null;
     G.phase = 'reward'; renderTools();
     setTimeout(() => { previewFight(); renderHud(); if (type === 'tool') showToolPick(); else if (type === 'stat') showStatPick(); else if (G.picks) showPick(); else showRoute(false); }, wait);
@@ -949,9 +1313,14 @@ overlay.addEventListener('click', e => {
   else if (d.gettool) { G.tools[d.gettool] = (G.tools[d.gettool] || 0) + 1; G.toolChoices = null; showRoute(false); }
   else if (d.stat) { G.stats[d.stat] += CLASSES[G.cls].up[d.stat]; G.statChoices = null; showRoute(false); }
   else if (d.route) takeRoute(+d.route);
-  else if (d.buytrait) { const id = d.buytrait, price = traitPrice(G.build[id] || 0); if (G.coins >= price) { G.coins -= price; G.build = addTrait(G.build, id); G.shop.sold.push(id); showShop(); } }
-  else if (d.buytool) { const id = d.buytool; if (G.coins >= TOOLS[id].price) { G.coins -= TOOLS[id].price; G.tools[id] = (G.tools[id] || 0) + 1; showShop(); } }
+  else if (d.buytrait) { const id = d.buytrait, price = traitPrice(G.build[id] || 0, G.fights); if (G.coins >= price && !G.shop.bought.includes('trait')) { G.coins -= price; G.build = addTrait(G.build, id); G.shop.bought.push('trait'); showShop(); } }
+  else if (d.buytool) { const id = d.buytool, price = toolPrice(id, G.fights); if (G.coins >= price && !G.shop.bought.includes(id)) { G.coins -= price; G.tools[id] = (G.tools[id] || 0) + 1; G.shop.bought.push(id); showShop(); } }
+  else if (b.id === 'refresh') { const price = refreshPrice(G.fights, G.shop.refreshes); if (G.coins >= price) { G.coins -= price; G.shop = newShop(G.shop.refreshes + 1); showShop(); } }
   else if (b.id === 'leave') { G.shop = null; showRoute(false); }
+  else if (b.id === 'spin') spinWheel();
+  else if (b.id === 'wheelGo') leaveChance();
+  else if (d.bargain) { takeBargain(d.bargain); G.altar = null; showRoute(false); }
+  else if (b.id === 'walk') { G.altar = null; showRoute(false); }
   else if (b.id === 'go') startFight();
 });
 $('tools').addEventListener('click', e => {
@@ -972,7 +1341,7 @@ window.addEventListener('keydown', e => { const k = e.key.toLowerCase();
   if (e.key === ' ' && G.phase === 'fight' && activeOf(G.build) && fight && !fight.over) { fight.activePress = true; e.preventDefault(); return; } if (KEYMAP[k]) { keys[k] = true; if (G.phase === 'fight' && G.build.control) e.preventDefault(); } });
 window.addEventListener('keyup', e => { delete keys[e.key.toLowerCase()]; });
 window.addEventListener('blur', () => { for (const k in keys) delete keys[k]; pointer = null; });
-function pointAt(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * ARENA, y: (e.clientY - r.top) / r.height * ARENA }; }
+function pointAt(e) { const r = cv.getBoundingClientRect(), W = fight ? fight.W : ARENA; return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * W }; }
 cv.addEventListener('pointerdown', e => { pointer = pointAt(e); });
 cv.addEventListener('pointermove', e => { if (pointer) pointer = pointAt(e); });
 for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) cv.addEventListener(ev, () => { pointer = null; });
@@ -996,6 +1365,7 @@ function drainEvents() {
     if (e.type === 'bump') burst(e.x, e.y, COL.muted, 4);
     else if (e.type === 'slash') burst(e.x, e.y, COL.ink, 8);
     else if (e.type === 'boom') { burst(e.x, e.y, COL.gold, 40); shake = reduceMotion ? 0 : 14; }
+    else if (e.type === 'heal') floats.push({ x: e.x + 30, y: e.y - 40, text: '+' + Math.round(e.amount), color: COL.poison, life: 0.7, size: 14 });
     else if (e.type === 'dmg') {
       const big = e.kind === 'crit';
       floats.push({ x: e.x, y: e.y - 64, text: Math.round(e.amount) + (big ? '!' : ''), color: big ? COL.gold : COL.ink, life: 0.8, size: big ? 26 : 18 });
@@ -1011,19 +1381,75 @@ function ring(c, pad, color, dash) {
   ctx.beginPath(); ctx.arc(c.x, c.y, c.r + pad, 0, Math.PI * 2); ctx.strokeStyle = color; ctx.lineWidth = 3;
   if (dash) ctx.setLineDash(dash); ctx.stroke(); ctx.setLineDash([]);
 }
+function star(x, y, r, a, points, color) {
+  ctx.fillStyle = color; ctx.beginPath();
+  for (let i = 0; i < points * 2; i++) { const rr = i % 2 ? r * 0.38 : r, aa = a + i * Math.PI / points; ctx[i ? 'lineTo' : 'moveTo'](x + Math.cos(aa) * rr, y + Math.sin(aa) * rr); }
+  ctx.closePath(); ctx.fill();
+}
+function hpText(c, scale) {
+  if (fight.demo) return;
+  ctx.fillStyle = COL.bg; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = `${Math.round(Math.min(c.r, 70) * (scale || 0.6))}px Bungee, "Arial Black", sans-serif`;
+  ctx.fillText(Math.ceil(c.hp), c.x, c.y + 2);
+}
 function drawCircle(c, color) {
-  const t = trails[c.side];
+  const t = trails[c.id] || [];
   for (let i = 0; i < t.length; i++) {
     ctx.globalAlpha = 0.18 * (i / t.length);
     ctx.beginPath(); ctx.arc(t[i].x, t[i].y, c.r * (0.5 + 0.5 * i / t.length), 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
   }
   ctx.globalAlpha = c.hp <= 0 ? 0.25 : 1;
+  if (c.cls === 'slime') { // a wobbling blob with eyes; the king wears a crown
+    const wob = reduceMotion ? 0 : Math.sin(fight.t * 6 + c.id) * 0.05;
+    ctx.fillStyle = c.flash > 0 ? COL.ink : (c.frozen > 0 ? COL.ice : COL.slime);
+    ctx.beginPath(); ctx.ellipse(c.x, c.y, c.r * (1 + wob), c.r * (1 - wob), 0, 0, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = 4; ctx.strokeStyle = color; ctx.stroke();
+    ctx.fillStyle = COL.bg;
+    for (const sd of [-1, 1]) { ctx.beginPath(); ctx.arc(c.x + sd * c.r * 0.3, c.y - c.r * 0.25, c.r * 0.09, 0, Math.PI * 2); ctx.fill(); }
+    if (c.gen === 0) {
+      ctx.fillStyle = COL.gold; ctx.beginPath();
+      const w = c.r * 0.7, top = c.y - c.r * 0.92;
+      ctx.moveTo(c.x - w / 2, top); ctx.lineTo(c.x - w / 2, top - 26); ctx.lineTo(c.x - w / 4, top - 12); ctx.lineTo(c.x, top - 32); ctx.lineTo(c.x + w / 4, top - 12); ctx.lineTo(c.x + w / 2, top - 26); ctx.lineTo(c.x + w / 2, top);
+      ctx.closePath(); ctx.fill();
+    }
+    if (c.silence > 0) ring(c, 10, COL.muted, [3, 7]);
+    if (c.poisonT > 0) ring(c, 6, COL.poison, [6, 6]);
+    if (c.gen < 2) { ctx.save(); ctx.translate(0, c.r * 0.22); hpText(c, 0.5); ctx.restore(); }
+    ctx.globalAlpha = 1; return;
+  }
+  if (c.cls === 'wall') { // a fortress with battlements, and its shuriken on a slow orbit
+    const n = 14;
+    ctx.fillStyle = COL.stone;
+    for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2; ctx.save(); ctx.translate(c.x + Math.cos(a) * c.r, c.y + Math.sin(a) * c.r); ctx.rotate(a); ctx.fillRect(-4, -11, 18, 22); ctx.restore(); }
+    ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+    ctx.fillStyle = c.flash > 0 ? COL.ink : (c.frozen > 0 ? COL.ice : COL.stone); ctx.fill();
+    ctx.lineWidth = 6; ctx.strokeStyle = color; ctx.stroke();
+    ctx.strokeStyle = COL.line; ctx.lineWidth = 3;
+    for (const rr of [0.45, 0.75]) { ctx.beginPath(); ctx.arc(c.x, c.y, c.r * rr, 0, Math.PI * 2); ctx.stroke(); }
+    const sx = c.x + Math.cos(c.swordAng) * (c.r + SHURIKEN_ORBIT), sy = c.y + Math.sin(c.swordAng) * (c.r + SHURIKEN_ORBIT);
+    ctx.strokeStyle = COL.line; ctx.lineWidth = 2; ctx.setLineDash([4, 10]);
+    ctx.beginPath(); ctx.arc(c.x, c.y, c.r + SHURIKEN_ORBIT, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+    star(sx, sy, SHURIKEN_R + 6, fight.t * 6, 4, c.silence > 0 ? COL.muted : COL.gold);
+    ctx.fillStyle = COL.bg; ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2); ctx.fill();
+    if (c.silence > 0) ring(c, 22, COL.muted, [3, 7]);
+    if (c.poisonT > 0) ring(c, 16, COL.poison, [6, 6]);
+    hpText(c, 0.42);
+    ctx.globalAlpha = 1; return;
+  }
   if (c.poolT > 0) { // Blood Pool: a flat puddle instead of a circle
     ctx.fillStyle = COL.blood; ctx.strokeStyle = color; ctx.lineWidth = 4;
     ctx.beginPath(); ctx.ellipse(c.x, c.y, c.r * 1.35, c.r * 0.7, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.fillStyle = COL.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = `${Math.round(c.r * 0.5)}px Bungee, "Arial Black", sans-serif`; ctx.fillText(Math.ceil(c.hp), c.x, c.y + 2);
     ctx.globalAlpha = 1; return;
+  }
+  if (c.chargeT > 0) { // Charge: a gold wedge leading the way
+    ctx.fillStyle = COL.gold; ctx.globalAlpha = 0.85;
+    const a = c.aim; ctx.beginPath();
+    ctx.moveTo(c.x + Math.cos(a) * (c.r + 30), c.y + Math.sin(a) * (c.r + 30));
+    ctx.lineTo(c.x + Math.cos(a + 0.5) * (c.r + 6), c.y + Math.sin(a + 0.5) * (c.r + 6));
+    ctx.lineTo(c.x + Math.cos(a - 0.5) * (c.r + 6), c.y + Math.sin(a - 0.5) * (c.r + 6)); ctx.fill();
+    ctx.globalAlpha = c.hp <= 0 ? 0.25 : 1;
   }
   if (c.cls === 'vampire') {
     const mv = Math.atan2(c.vy, c.vx);
@@ -1047,7 +1473,7 @@ function drawCircle(c, color) {
       ctx.fill();
     }
   }
-  // Class ability: swords for the Knight, a bow facing the rival for the Archer.
+  // Class ability: swords for the Knight, a bow facing the rival for the Archer, spikes for the Spike.
   if (c.cls === 'knight') {
     const n = swordCount(c), len = swordLen(c), w = swordWidth(c);
     ctx.lineCap = 'round';
@@ -1088,29 +1514,33 @@ function drawCircle(c, color) {
   if (c.poisonT > 0) ring(c, 18, COL.poison, [6, 6]);
   if (c.invuln > 0) ring(c, 16, COL.gold);
   if (c.silence > 0) ring(c, 24, COL.muted, [3, 7]);
-  if (!fight.demo) {
-    ctx.fillStyle = COL.bg; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = `${Math.round(c.r * 0.6)}px Bungee, "Arial Black", sans-serif`;
-    ctx.fillText(Math.ceil(c.hp), c.x, c.y + 2);
-  }
+  hpText(c);
   ctx.globalAlpha = 1;
 }
 
 function draw(dt) {
+  const W = fight.W, k = cv.width / W;
   ctx.save();
-  ctx.clearRect(0, 0, ARENA, ARENA);
+  ctx.clearRect(0, 0, cv.width, cv.height);
   if (shake > 0.3) { ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake); shake *= 0.85; }
+  ctx.scale(k, k);
   ctx.strokeStyle = COL.line; ctx.lineWidth = 1; ctx.globalAlpha = 0.5;
-  for (let i = 60; i < ARENA; i += 60) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, ARENA); ctx.moveTo(0, i); ctx.lineTo(ARENA, i); ctx.stroke(); }
+  for (let i = 60; i < W; i += 60) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, W); ctx.moveTo(0, i); ctx.lineTo(W, i); ctx.stroke(); }
   ctx.globalAlpha = 1;
-  if (G.phase === 'fight' && fight.t > SUDDEN_AT) {
-    ctx.fillStyle = COL.you; ctx.globalAlpha = 0.08 + 0.05 * Math.sin(fight.t * 8); ctx.fillRect(0, 0, ARENA, ARENA); ctx.globalAlpha = 1;
-    ctx.fillStyle = COL.you; ctx.font = font(20, t('sudden')); ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText(t('sudden'), ARENA / 2, 12);
+  if (G.phase === 'fight' && fight.t > fight.suddenAt) {
+    ctx.fillStyle = COL.you; ctx.globalAlpha = 0.08 + 0.05 * Math.sin(fight.t * 8); ctx.fillRect(0, 0, W, W); ctx.globalAlpha = 1;
+    ctx.fillStyle = COL.you; ctx.font = font(20 / k, t('sudden')); ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillText(t('sudden'), W / 2, 12 / k);
   }
+  for (const wv of fight.waves) { // the Great Wall's shock wave
+    ctx.globalAlpha = Math.max(0.15, 0.8 - wv.r / (W * 1.6)); ctx.strokeStyle = COL.rival; ctx.lineWidth = 10;
+    ctx.beginPath(); ctx.arc(wv.x, wv.y, wv.r, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineWidth = 3; ctx.strokeStyle = COL.ink; ctx.beginPath(); ctx.arc(wv.x, wv.y, Math.max(0, wv.r - 12), 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
   for (const st of fight.stings) { // stings sit on the wall, in their owner's colour
     ctx.fillStyle = st.side === 0 ? COL.you : COL.rival; ctx.strokeStyle = COL.ink; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(Math.max(4, Math.min(ARENA - 4, st.x)), Math.max(4, Math.min(ARENA - 4, st.y)), 11, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(Math.max(4, Math.min(W - 4, st.x)), Math.max(4, Math.min(W - 4, st.y)), 11, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   }
   for (const rp of fight.ropes) {
     const own = rp.side === 0 ? fight.a : fight.b;
@@ -1118,7 +1548,8 @@ function draw(dt) {
     ctx.beginPath(); ctx.moveTo(own.x, own.y); ctx.lineTo(rp.x, rp.y); ctx.stroke(); ctx.setLineDash([]);
     ctx.fillStyle = COL.gold; ctx.beginPath(); ctx.arc(rp.x, rp.y, 8, 0, Math.PI * 2); ctx.fill();
   }
-  drawCircle(fight.a, COL.you); drawCircle(fight.b, COL.rival);
+  drawCircle(fight.a, COL.you);
+  for (const c of fight.foes) drawCircle(c, COL.rival);
   for (const sv of fight.servants) {
     ctx.fillStyle = COL.blood; ctx.strokeStyle = sv.side === 0 ? COL.you : COL.rival; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.arc(sv.x, sv.y, SERV_R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
@@ -1140,7 +1571,8 @@ function draw(dt) {
   ctx.globalAlpha = 1;
   for (const fl of floats) {
     ctx.globalAlpha = Math.min(1, fl.life * 2.5); ctx.fillStyle = fl.color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = font(fl.size, fl.text); ctx.fillText(fl.text, Math.max(70, Math.min(ARENA - 70, fl.x)), Math.max(16, fl.y));
+    const size = fl.size / k;
+    ctx.font = font(size, fl.text); ctx.fillText(fl.text, Math.max(70 / k, Math.min(W - 70 / k, fl.x)), Math.max(16 / k, fl.y));
   }
   ctx.globalAlpha = 1;
   ctx.restore();
@@ -1157,7 +1589,7 @@ function frame(now) {
     if (live) fight.input = readInput();
     while (acc >= DT && !fight.over) {
       stepFight(fight); acc -= DT;
-      if (Math.round(fight.t / DT) % 3 === 0) for (const c of [fight.a, fight.b]) { const t = trails[c.side]; t.push({ x: c.x, y: c.y }); if (t.length > 10) t.shift(); }
+      if (Math.round(fight.t / DT) % 3 === 0) for (const c of [fight.a, ...fight.foes]) { const tr = trails[c.id] || (trails[c.id] = []); tr.push({ x: c.x, y: c.y }); if (tr.length > 10) tr.shift(); }
     }
     drainEvents();
     if (live) { renderBars(); updateActiveBtn(); if (fight.over) endFight(); }
@@ -1168,21 +1600,22 @@ function frame(now) {
 
 function start(saved) {
   applyStatic();
-  if (saved && saved.cls && saved.node && saved.node.rival && saved.node.rival.cls && saved.phase !== 'over' && saved.phase !== 'ko') {
-    G = saved; G.best = Math.max(G.best || 0, loadBest()); G.tools = G.tools || {};
-    // A run saved before a trait was removed or capped drops or trims it.
-    const clean = b => { for (const id in b) { if (!FX[id]) delete b[id]; else b[id] = Math.min(b[id], maxLv(id)); } return b; };
-    clean(G.build); clean(G.node.rival.traits);
-    if (G.routes) G.routes.forEach(r => r.rival && clean(r.rival.traits));
-    if (G.choices) G.choices = G.choices.filter(id => FX[id]);
-    if (G.shop) G.shop.traits = G.shop.traits.filter(id => FX[id]);
+  if (saved && saved.cls && CLASSES[saved.cls] && saved.node && saved.node.rival && saved.node.rival.cls && saved.phase !== 'over' && saved.phase !== 'ko') {
+    G = saved; G.best = Math.max(G.best || 0, loadBest());
+    G.tools = G.tools || {}; G.mods = G.mods || {}; G.next = G.next || {}; G.bargains = G.bargains || {};
+    // A run saved before a trait was removed, moved or capped drops or trims it.
+    const clean = (b, cls) => { for (const id in b) { if (!FX[id] || (CLASSES[cls] && !CLASSES[cls].traits.includes(id))) delete b[id]; else b[id] = Math.min(b[id], maxLv(id)); } return b; };
+    clean(G.build, G.cls); if (!G.node.rival.boss) clean(G.node.rival.traits, G.node.rival.cls);
+    if (G.routes) G.routes.forEach(r => r.rival && !r.rival.boss && clean(r.rival.traits, r.rival.cls));
+    if (G.choices) G.choices = G.choices.filter(id => FX[id] && CLASSES[G.cls].traits.includes(id));
+    if (G.shop && !Array.isArray(G.shop.tools || null)) G.shop = null;
+    if (G.shop && G.shop.traits) G.shop = newShop(0);
     previewFight(); renderHud();
-    if (G.phase === 'pick') showPick(true);
-    else if (G.phase === 'toolpick') showToolPick(true);
-    else if (G.phase === 'statpick') showStatPick(true);
-    else if (G.phase === 'reward') showRoute(false);
-    else if (G.phase === 'route') showRoute(true);
-    else if (G.phase === 'shop' && G.shop) showShop();
+    if (G.phase === 'reward') showRoute(false);
+    else if (G.phase === 'shop' && !G.shop) showRoute(false);
+    else if (G.phase === 'chance' && !G.wheel) showRoute(false);
+    else if (G.phase === 'altar' && !G.altar) showRoute(false);
+    else if (['pick', 'toolpick', 'statpick', 'route', 'shop', 'chance', 'altar'].includes(G.phase)) redraw();
     else showReady();
   } else showTitle();
   requestAnimationFrame(frame);
